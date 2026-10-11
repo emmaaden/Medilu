@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase E: rol de RECEPCIÓN (gestión de turnos de la clínica)
+-- Medilu — Fase E: rol de RECEPCIÓN (gestión de turnos de la clínica)
 -- ---------------------------------------------------------------------------
 -- Ejecutar UNA vez en el SQL Editor de Supabase. Es idempotente.
 --

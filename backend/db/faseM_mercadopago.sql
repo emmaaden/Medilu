@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase M: cobro de la suscripción de las clínicas con Mercado Pago
+-- Medilu — Fase M: cobro de la suscripción de las clínicas con Mercado Pago
 -- ---------------------------------------------------------------------------
 -- Ejecutar UNA vez en el SQL Editor de Supabase, DESPUÉS de faseL_planes.sql.
 -- Es IDEMPOTENTE.

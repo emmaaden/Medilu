@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase J: rol AUDITOR, bitácora de accesos a la HC y bandeja de auditoría
+-- Medilu — Fase J: rol AUDITOR, bitácora de accesos a la HC y bandeja de auditoría
 -- ---------------------------------------------------------------------------
 -- Ejecutar UNA vez en el SQL Editor de Supabase, DESPUÉS de faseI_estudios.sql.
 -- Es IDEMPOTENTE.

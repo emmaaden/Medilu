@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase 2c: RLS real por JWT de usuario
+-- Medilu — Fase 2c: RLS real por JWT de usuario
 -- ---------------------------------------------------------------------------
 -- Ejecutar UNA vez en el SQL Editor de Supabase, DESPUÉS de fase2_multiclinica.sql
 -- y fase2b_turnos_publicos.sql. Es idempotente.

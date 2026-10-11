@@ -66,7 +66,7 @@ export function Logo({
       {/* isotipo = 1,5 × altura de mayúscula; separación = 0,62 módulo (manual de marca) */}
       <Isotipo inverted={inverted} className="size-5.5" />
       <span>
-        Agen<span className={inverted ? undefined : "text-primary"}>lu</span>
+        Medi<span className={inverted ? undefined : "text-primary"}>lu</span>
       </span>
     </Link>
   )

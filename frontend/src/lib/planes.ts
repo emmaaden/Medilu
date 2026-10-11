@@ -118,7 +118,7 @@ export function codigoErrorPlan(err: unknown) {
 export function waContratar(plan: string, clinica?: string | null, ciclo: "mensual" | "anual" = "mensual") {
   const texto = clinica
     ? `Hola, quiero contratar el plan ${plan} (${ciclo}) para la clínica «${clinica}».`
-    : `Hola, me interesa el plan ${plan} (${ciclo}) de Agenlu y quiero saber cómo seguir.`
+    : `Hola, me interesa el plan ${plan} (${ciclo}) de Medilu y quiero saber cómo seguir.`
   return `${WHATSAPP_URL}?text=${encodeURIComponent(texto)}`
 }
 

@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase 2b: URL pública de turnos por clínica (slug)
+-- Medilu — Fase 2b: URL pública de turnos por clínica (slug)
 -- ---------------------------------------------------------------------------
 -- Ejecutar UNA vez en el SQL Editor de Supabase, DESPUÉS de fase2_multiclinica.sql.
 -- Es idempotente.

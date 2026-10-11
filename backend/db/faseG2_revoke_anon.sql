@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase G.2: quitar el acceso del rol `anon` a las tablas de negocio
+-- Medilu — Fase G.2: quitar el acceso del rol `anon` a las tablas de negocio
 -- ---------------------------------------------------------------------------
 -- Ejecutar UNA vez en el SQL Editor de Supabase, DESPUÉS de faseG_fix_rls.sql.
 -- Es IDEMPOTENTE.

@@ -1,4 +1,4 @@
-"""Genera el carrusel fijado 1 (1080x1350) y la foto de perfil (1080x1080) de @agenlu.app.
+"""Genera el carrusel fijado 1 (1080x1350) y la foto de perfil (1080x1080) de @medilu.app.
 Uso: python build.py  (requiere Chrome instalado)."""
 import pathlib, subprocess, html
 
@@ -50,7 +50,7 @@ li::before {{ content: ""; width: 26px; height: 26px; border-radius: 7px; backgr
 N = 9
 def foot(dark):
     iso = ISOTIPO.format(cls="", mod="var(--on-primary)" if dark else "var(--primary)", dot="var(--turno-on)" if dark else "var(--turno)")
-    return f'<div class="foot"><span>@agenlu.app</span>{iso}</div>'
+    return f'<div class="foot"><span>@medilu.app</span>{iso}</div>'
 
 def slide(i, body, dark=False):
     return (f'<!doctype html><html lang="es"><head><meta charset="utf-8"><style>{CSS}</style></head><body>'

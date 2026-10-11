@@ -1,6 +1,6 @@
-# Agenlu
+# Medilu
 
-Agenlu es una plataforma diseñada para gestionar turnos médicos y registrar información clínica de manera eficiente. Está enfocada tanto en pacientes como en profesionales de la salud, permitiendo una interacción ágil y optimizada.
+Medilu es una plataforma diseñada para gestionar turnos médicos y registrar información clínica de manera eficiente. Está enfocada tanto en pacientes como en profesionales de la salud, permitiendo una interacción ágil y optimizada.
 
 ## Características
 - **Gestión de turnos médicos:** Los usuarios pueden consultar la disponibilidad y reservar citas fácilmente.

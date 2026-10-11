@@ -213,9 +213,9 @@ function enviarEmailTurno({ req, tipo, email, inicio, profesionalNombre, especia
     const esp = especialidad ? ` (${especialidad})` : '';
 
     const asuntos = {
-        confirmacion: 'Confirmación de tu turno - Agenlu',
-        reprogramacion: 'Tu turno fue reprogramado - Agenlu',
-        cancelacion: 'Tu turno fue cancelado - Agenlu',
+        confirmacion: 'Confirmación de tu turno - Medilu',
+        reprogramacion: 'Tu turno fue reprogramado - Medilu',
+        cancelacion: 'Tu turno fue cancelado - Medilu',
     };
     const encabezados = {
         confirmacion: `Tu turno${con}${esp} quedó <strong>agendado</strong> para el <strong>${fecha} hs</strong>.`,
@@ -233,8 +233,8 @@ function enviarEmailTurno({ req, tipo, email, inicio, profesionalNombre, especia
     sendMail({
         to: email,
         subject: asuntos[tipo],
-        text: `Hola,\n\n${encabezados[tipo].replace(/<[^>]+>/g, '')}${gestionText}\n\nAgenlu.`,
-        html: `<p>Hola,</p><p>${encabezados[tipo]}</p>${gestion}<p>Gracias por usar Agenlu.</p>`,
+        text: `Hola,\n\n${encabezados[tipo].replace(/<[^>]+>/g, '')}${gestionText}\n\nMedilu.`,
+        html: `<p>Hola,</p><p>${encabezados[tipo]}</p>${gestion}<p>Gracias por usar Medilu.</p>`,
     }).catch((e) => console.error('Error enviando email de turno:', e.message));
 }
 

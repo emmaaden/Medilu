@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase F: la tabla `turno` como ÚNICA fuente de disponibilidad
+-- Medilu — Fase F: la tabla `turno` como ÚNICA fuente de disponibilidad
 -- ---------------------------------------------------------------------------
 -- Ejecutar UNA vez en el SQL Editor de Supabase. Es idempotente.
 --

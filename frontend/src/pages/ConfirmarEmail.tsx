@@ -15,7 +15,7 @@ export default function ConfirmarEmail() {
   return (
     <AuthShell
       title="Ya casi está"
-      subtitle="Confirmá tu email para activar tu cuenta y empezar a usar Agenlu."
+      subtitle="Confirmá tu email para activar tu cuenta y empezar a usar Medilu."
     >
       <div className="text-center">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-primary/10 text-primary">

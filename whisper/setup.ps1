@@ -16,7 +16,7 @@ New-Item -ItemType Directory -Force $bin, $models | Out-Null
 if (-not (Get-ChildItem $bin -Recurse -Filter whisper-server.exe -ErrorAction SilentlyContinue)) {
     Write-Host 'Descargando whisper.cpp...'
     # Los tags vX.Y.Z vienen sin binarios: están en las releases de build (bNNNN).
-    $releases = Invoke-RestMethod 'https://api.github.com/repos/ggml-org/whisper.cpp/releases?per_page=20' -Headers @{ 'User-Agent' = 'Agenlu' }
+    $releases = Invoke-RestMethod 'https://api.github.com/repos/ggml-org/whisper.cpp/releases?per_page=20' -Headers @{ 'User-Agent' = 'Medilu' }
     $rel = $releases | Where-Object { $_.assets | Where-Object { $_.name -eq 'whisper-bin-x64.zip' } } | Select-Object -First 1
     if (-not $rel) { throw 'No se encontró whisper-bin-x64.zip en las últimas releases de whisper.cpp' }
     $asset = $rel.assets | Where-Object { $_.name -eq 'whisper-bin-x64.zip' } | Select-Object -First 1

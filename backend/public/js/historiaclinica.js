@@ -128,7 +128,7 @@ async function searchPaciente() {
     // Encabezado
     doc.setFontSize(20);
     doc.setFont("helvetica", "bold");
-    doc.text("Agenlu", 105, 20, null, null, "center");
+    doc.text("Medilu", 105, 20, null, null, "center");
 
     doc.setFontSize(14);
     doc.setFont("helvetica", "normal");
