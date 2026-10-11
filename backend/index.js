@@ -52,6 +52,12 @@ if (isProd) {
     app.set('trust proxy', 1); // necesario para cookies 'secure' detrás de un proxy/https
 }
 
+// Health check liviano: lo usan Render y los pings de keep-alive (ver "Keep-alive"
+// abajo). Va antes del rate limit y de la sesión para no gastar cupo ni crear sesiones.
+app.get('/healthz', (req, res) => {
+    res.set('Cache-Control', 'no-store').json({ ok: true, uptime: Math.round(process.uptime()) });
+});
+
 // Helmet para las cabeceras de seguridad; la CSP la definimos aparte (abajo) para
 // declararla explícitamente (estricta para todo el sitio).
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -645,3 +651,21 @@ if (isProd) {
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
+
+// ---------------------------------------------------------------------------
+// Keep-alive (Render free)
+// El plan gratuito de Render apaga el servicio tras 15 min sin tráfico entrante.
+// Render define RENDER_EXTERNAL_URL: nos pegamos a la URL pública cada 10 min para
+// que cuente como tráfico. Solo mantiene despierta una instancia que ya está viva;
+// si igual se durmiera, un monitor externo (UptimeRobot / cron-job.org) a /healthz
+// la vuelve a levantar. Se desactiva con KEEP_ALIVE=false.
+// ---------------------------------------------------------------------------
+const keepAliveUrl = process.env.RENDER_EXTERNAL_URL;
+if (keepAliveUrl && process.env.KEEP_ALIVE !== 'false') {
+    const url = new URL('/healthz', keepAliveUrl).toString();
+    setInterval(() => {
+        fetch(url, { signal: AbortSignal.timeout(30 * 1000) })
+            .catch(e => console.warn('[keep-alive] ping fallido:', e.message));
+    }, 10 * 60 * 1000).unref();
+    console.log(`Keep-alive activo: ping a ${url} cada 10 min.`);
+}
