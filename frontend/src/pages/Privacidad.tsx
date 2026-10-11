@@ -12,7 +12,7 @@ export default function Privacidad() {
       title="Política de privacidad"
       intro={
         <p>
-          En esta política te explicamos qué datos personales tratamos en Agenlu,
+          En esta política te explicamos qué datos personales tratamos en Medilu,
           para qué, con quién los compartimos, cuánto tiempo los guardamos y cómo podés
           ejercer tus derechos, de acuerdo con la Ley 25.326 de Protección de los Datos
           Personales, su Decreto reglamentario 1558/2001 y la Ley 26.529 de Derechos del
@@ -27,13 +27,13 @@ export default function Privacidad() {
               <p>
                 El responsable de los datos de las cuentas, de las reservas de turnos y de
                 las solicitudes que se hacen desde este sitio es el titular de
-                Agenlu, cuyos datos figuran al pie de esta página.
+                Medilu, cuyos datos figuran al pie de esta página.
               </p>
               <p>
                 La <strong>historia clínica</strong> y demás información de salud que
                 cargan los profesionales pertenece al paciente y es responsabilidad del
                 profesional o la clínica que la registra (Ley 26.529). Respecto de esos
-                datos, Agenlu actúa como prestador del servicio de tratamiento por
+                datos, Medilu actúa como prestador del servicio de tratamiento por
                 cuenta de la clínica (art. 25 de la Ley 25.326): los usa solo para
                 prestar el servicio y no los aplica a otra finalidad.
               </p>
@@ -141,7 +141,7 @@ export default function Privacidad() {
                   Si contratás un plan para tu clínica: Mercado Pago, que procesa el pago
                   y el débito automático. Le enviamos el email que indiques para pagar, el
                   plan y el monto; los datos de la tarjeta los cargás directamente en
-                  Mercado Pago y nunca pasan por Agenlu. A los pacientes no se les
+                  Mercado Pago y nunca pasan por Medilu. A los pacientes no se les
                   cobra nada.
                 </li>
                 <li>Autoridades judiciales o administrativas, cuando la ley lo exija.</li>

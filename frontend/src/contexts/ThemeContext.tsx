@@ -7,7 +7,7 @@ import { createContext, useContext, useEffect, useState } from "react"
  */
 export type Theme = "light" | "dark" | "system"
 
-const STORAGE_KEY = "agenlu-theme"
+const STORAGE_KEY = "medilu-theme"
 const DARK_QUERY = "(prefers-color-scheme: dark)"
 
 type ThemeContextValue = {

@@ -118,9 +118,9 @@ exports.solicitudConsumo = async (req, res) => {
         if (notificado) {
             await sendMail({
                 to: email,
-                subject: `Recibimos tu solicitud (${codigo}) - Agenlu`,
-                text: `Hola ${nombre},\n\nRecibimos tu ${titulo.toLowerCase()}.\nTu código de identificación es ${codigo}. Guardalo para cualquier consulta.\n\n${resumenTxt}\n\nAgenlu`,
-                html: `<p>Hola ${escapeHtml(nombre)},</p><p>Recibimos tu ${titulo.toLowerCase()}. Tu código de identificación es <strong>${codigo}</strong>. Guardalo para cualquier consulta.</p>${resumenHtml}<p>Agenlu</p>`,
+                subject: `Recibimos tu solicitud (${codigo}) - Medilu`,
+                text: `Hola ${nombre},\n\nRecibimos tu ${titulo.toLowerCase()}.\nTu código de identificación es ${codigo}. Guardalo para cualquier consulta.\n\n${resumenTxt}\n\nMedilu`,
+                html: `<p>Hola ${escapeHtml(nombre)},</p><p>Recibimos tu ${titulo.toLowerCase()}. Tu código de identificación es <strong>${codigo}</strong>. Guardalo para cualquier consulta.</p>${resumenHtml}<p>Medilu</p>`,
             });
         }
     } catch (err) {

@@ -1,5 +1,5 @@
 {
-  "name": "agenlu",
+  "name": "medilu",
   "version": "1.0.0",
   "description": "Plataforma de gestión de turnos médicos y registro clínico para clínicas y profesionales de la salud.",
   "main": "index.js",

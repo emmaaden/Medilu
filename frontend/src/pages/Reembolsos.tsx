@@ -12,7 +12,7 @@ export default function Reembolsos() {
       intro={
         <p>
           Cómo funcionan el arrepentimiento, la baja y los reintegros de los planes
-          pagos de Agenlu. Esta política se suma a tus derechos como consumidor
+          pagos de Medilu. Esta política se suma a tus derechos como consumidor
           (Ley 24.240 y Código Civil y Comercial) y nunca los reduce.
         </p>
       }
@@ -21,7 +21,7 @@ export default function Reembolsos() {
           title: "Pacientes",
           body: (
             <p>
-              Reservar turnos en Agenlu es gratuito: no te cobramos nada. Lo que
+              Reservar turnos en Medilu es gratuito: no te cobramos nada. Lo que
               pagues por una consulta lo cobra el profesional o la clínica, y los
               reintegros de ese pago se rigen por sus condiciones. Si tenés un problema
               con ese cobro, reclamale a quien te lo cobró.

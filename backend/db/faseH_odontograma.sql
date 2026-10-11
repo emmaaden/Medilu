@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase H: Odontograma profesional (por caras + estados)
+-- Medilu — Fase H: Odontograma profesional (por caras + estados)
 -- ---------------------------------------------------------------------------
 -- Ejecutar UNA vez en el SQL Editor de Supabase. Es idempotente.
 --

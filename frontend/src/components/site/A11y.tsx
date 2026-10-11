@@ -19,7 +19,7 @@ export function SkipLink() {
   )
 }
 
-const BASE = "Agenlu"
+const BASE = "Medilu"
 
 // Título por ruta (WCAG 2.4.2): cada página tiene un <title> propio, que es lo primero
 // que anuncia un lector de pantalla al navegar dentro del SPA.

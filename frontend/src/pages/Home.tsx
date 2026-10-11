@@ -426,7 +426,7 @@ export default function Home() {
               Cerca de tu salud, siempre
             </h2>
             <p className="mt-4 text-muted-foreground">
-              Agenlu nació para simplificar la relación entre pacientes y
+              Medilu nació para simplificar la relación entre pacientes y
               profesionales: menos llamadas, menos esperas y más tiempo para lo
               que importa. Digitalizamos turnos e historias clínicas con foco en
               la seguridad y la simplicidad.

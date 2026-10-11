@@ -44,7 +44,7 @@ Plataforma para gestionar turnos médicos y registrar información clínica: el 
 
 ## Brand Commitments
 
-- Nombre: **Agenlu**. Logo en `frontend/src/components/site/Logo.tsx`.
+- Nombre: **Medilu**. Logo en `frontend/src/components/site/Logo.tsx`.
 - Voz: cercana, clara, en voseo; promete seguridad y confidencialidad de la información clínica.
 
 ## Evidence on Hand

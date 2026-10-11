@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase D: Exportación / Importación de Historias Clínicas
+-- Medilu — Fase D: Exportación / Importación de Historias Clínicas
 -- ---------------------------------------------------------------------------
 -- Ejecutar en Supabase DESPUÉS de faseC2_fix_rls_miembro.sql. Idempotente.
 --

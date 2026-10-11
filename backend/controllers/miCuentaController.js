@@ -156,7 +156,7 @@ exports.updatePerfil = async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // GET /api/mi-cuenta/historia/export  -> HC propia en formato estructurado (JSON),
-// mismo formato 'agenlu.hc' que el export del profesional (portable/re-importable).
+// mismo formato 'medilu.hc' que el export del profesional (portable/re-importable).
 // Ley 26.529: derecho del paciente a una copia de su información.
 // ---------------------------------------------------------------------------
 exports.exportHistoria = async (req, res) => {
@@ -175,7 +175,7 @@ exports.exportHistoria = async (req, res) => {
         if (error) throw error;
 
         const doc = {
-            formato: 'agenlu.hc',
+            formato: 'medilu.hc',
             version: '1.0',
             generadoEn: new Date().toISOString(),
             alcance: 'paciente',

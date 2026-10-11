@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase 2c (parte 3): RLS por JWT para horarios y avatars
+-- Medilu — Fase 2c (parte 3): RLS por JWT para horarios y avatars
 -- ---------------------------------------------------------------------------
 -- Ejecutar UNA vez en el SQL Editor de Supabase, DESPUÉS de fase2c_rls_jwt.sql.
 -- Es idempotente. Cierra el rollout de RLS: horario_profesional (tabla) y el

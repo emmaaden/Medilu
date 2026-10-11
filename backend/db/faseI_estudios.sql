@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase I: Mis estudios (repositorio del paciente + compartir)
+-- Medilu — Fase I: Mis estudios (repositorio del paciente + compartir)
 -- ---------------------------------------------------------------------------
 -- Ejecutar UNA vez en el SQL Editor de Supabase (o vía MCP), DESPUÉS de
 -- fase3_turnos.sql y faseA_membresia.sql. Es IDEMPOTENTE.

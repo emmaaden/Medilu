@@ -31,7 +31,7 @@ const ITEMS = [
     categoria: "Necesaria",
   },
   {
-    nombre: "agenlu-theme",
+    nombre: "medilu-theme",
     tipo: "Almacenamiento local",
     finalidad: "Recordar si elegiste el tema claro u oscuro. Solo se guarda si lo cambiás.",
     duracion: "Hasta que lo borres",
@@ -47,7 +47,7 @@ export default function Cookies() {
       intro={
         <p>
           Las cookies y el almacenamiento local son pequeños archivos que un sitio
-          guarda en tu navegador. Acá te contamos exactamente cuáles usa Agenlu.
+          guarda en tu navegador. Acá te contamos exactamente cuáles usa Medilu.
         </p>
       }
       sections={[

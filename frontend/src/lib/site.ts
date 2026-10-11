@@ -14,7 +14,7 @@ export const CONTACT_EMAIL = "emma26228@gmail.com"
  */
 export const BUSINESS = {
   /** Nombre comercial del servicio. */
-  marca: "Agenlu",
+  marca: "Medilu",
   /** Titular / responsable (persona humana o razón social). */
   titular: "Emmanuel Denis",
   /** CUIT del titular. Formato 20-12345678-9. */
@@ -62,5 +62,5 @@ export const NAV_LINKS = [
 
 /** Enlaces de ayuda / secundarios usados en footer y menú móvil. */
 export const HELP_URL = `${WHATSAPP_URL}?text=${encodeURIComponent(
-  "Hola, necesito ayuda con Agenlu"
+  "Hola, necesito ayuda con Medilu"
 )}`

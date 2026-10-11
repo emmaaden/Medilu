@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase 3: tabla `turno` (fuente de verdad del vínculo paciente↔turno)
+-- Medilu — Fase 3: tabla `turno` (fuente de verdad del vínculo paciente↔turno)
 -- ---------------------------------------------------------------------------
 -- Ejecutar UNA vez en el SQL Editor de Supabase, DESPUÉS de fase2c_rls_jwt.sql.
 -- Es idempotente.

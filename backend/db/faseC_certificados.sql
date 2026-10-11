@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase C: Certificados médicos
+-- Medilu — Fase C: Certificados médicos
 -- ---------------------------------------------------------------------------
 -- Ejecutar UNA vez en el SQL Editor de Supabase, DESPUÉS de faseA_membresia.sql.
 -- Es IDEMPOTENTE.

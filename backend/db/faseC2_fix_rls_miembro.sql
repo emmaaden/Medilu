@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase C.2: FIX de RLS — distinguir staff de pacientes
+-- Medilu — Fase C.2: FIX de RLS — distinguir staff de pacientes
 -- ---------------------------------------------------------------------------
 -- Ejecutar en Supabase DESPUÉS de faseC_certificados.sql. Idempotente.
 --

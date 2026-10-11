@@ -1,4 +1,4 @@
-# Auditoría de seguridad — Agenlu
+# Auditoría de seguridad — Medilu
 
 **Fecha:** 2026-09-20
 **Alcance:** backend (Express + Supabase), políticas RLS (`backend/db/*.sql`), flujo de

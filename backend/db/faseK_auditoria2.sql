@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Agenlu — Fase K: auditoría (tanda 2)
+-- Medilu — Fase K: auditoría (tanda 2)
 --   A. Obra social estructurada (catálogo + n.º de afiliado + plan).
 --   B. Codificación: CIE-10 (subconjunto odontológico) y prácticas por clínica.
 --   C. Autorizaciones previas de prácticas (con adjuntos).

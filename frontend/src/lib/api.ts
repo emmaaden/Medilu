@@ -1,5 +1,5 @@
 /**
- * Cliente HTTP para la API de Agenlu (Express).
+ * Cliente HTTP para la API de Medilu (Express).
  *
  * - `credentials: 'include'` en todas las llamadas: la sesión vive en una cookie
  *   httpOnly del backend. En desarrollo, Vite hace proxy (mismo origen) para que

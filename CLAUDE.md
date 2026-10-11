@@ -1,4 +1,4 @@
-# Agenlu — Arquitectura del proyecto
+# Medilu — Arquitectura del proyecto
 
 Monorepo con dos aplicaciones independientes:
 
