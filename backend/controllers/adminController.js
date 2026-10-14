@@ -58,6 +58,73 @@ exports.listarMiembros = async (req, res) => {
     }
 };
 
+// GET /admin/clinica — Fase N: datos públicos de la clínica activa.
+exports.obtenerClinica = async (req, res) => {
+    try {
+        const clinicaId = req.session.user.clinicaId;
+        if (!clinicaId) return res.status(400).json({ error: 'No tenés una clínica activa.' });
+
+        const { data, error } = await supabase
+            .from('clinica')
+            .select('nombre, slug, direccion, descripcion, turnos_online')
+            .eq('id', clinicaId)
+            .maybeSingle();
+        if (error) return res.status(400).json({ error: error.message });
+        if (!data) return res.status(404).json({ error: 'Clínica no encontrada.' });
+
+        return res.json({ clinica: data });
+    } catch (err) {
+        console.error('Error obteniendo la clínica:', err);
+        return res.status(500).json({ error: 'Error al obtener la clínica' });
+    }
+};
+
+// PUT /admin/clinica — Fase N: dirección y descripción (opcional) que ve el paciente.
+exports.actualizarClinica = async (req, res) => {
+    try {
+        const clinicaId = req.session.user.clinicaId;
+        if (!clinicaId) return res.status(400).json({ error: 'No tenés una clínica activa.' });
+
+        // validate() no muta el body: el trim se repite acá.
+        const direccion = String(req.body.direccion ?? '').trim();
+        const descripcion = String(req.body.descripcion ?? '').trim();
+        const { data, error } = await supabase
+            .from('clinica')
+            .update({ direccion: direccion || null, descripcion: descripcion || null })
+            .eq('id', clinicaId)
+            .select('nombre, slug, direccion, descripcion, turnos_online')
+            .single();
+        if (error) return res.status(400).json({ error: error.message });
+
+        return res.json({ message: 'Clínica actualizada', clinica: data });
+    } catch (err) {
+        console.error('Error actualizando la clínica:', err);
+        return res.status(500).json({ error: 'Error al actualizar la clínica' });
+    }
+};
+
+// PUT /admin/clinica/turnos-online — Fase N2: aparecer (o no) en la reserva pública.
+// Apagado, la clínica sigue usando el sistema y el staff carga los turnos desde el panel.
+exports.actualizarTurnosOnline = async (req, res) => {
+    try {
+        const clinicaId = req.session.user.clinicaId;
+        if (!clinicaId) return res.status(400).json({ error: 'No tenés una clínica activa.' });
+
+        const { data, error } = await supabase
+            .from('clinica')
+            .update({ turnos_online: req.body.activo === true })
+            .eq('id', clinicaId)
+            .select('nombre, slug, direccion, descripcion, turnos_online')
+            .single();
+        if (error) return res.status(400).json({ error: error.message });
+
+        return res.json({ message: 'Turnos online actualizados', clinica: data });
+    } catch (err) {
+        console.error('Error actualizando los turnos online:', err);
+        return res.status(500).json({ error: 'Error al actualizar los turnos online' });
+    }
+};
+
 // PATCH /admin/miembros/:id — alta/baja (activo) y/o cambio de rol de un miembro.
 // Salvaguarda: la clínica no puede quedar SIN ningún admin activo.
 exports.actualizarMiembro = async (req, res) => {

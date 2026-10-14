@@ -93,7 +93,7 @@ export function DictationTextarea({
                   // Puede llegar más de una frase antes del próximo render.
                   valueRef.current = unirDictado(valueRef.current, frase)
                   onValueChange(valueRef.current)
-                })
+                }, () => valueRef.current)
           }
         >
           {listening ? <MicOff /> : <Mic />}

@@ -99,6 +99,13 @@ module.exports = {
             // Fase K: alcance por obra social del catálogo (null = interno).
             alcanceIdObraSocial: idCatalogo.nullable().optional(),
         }),
+        // Fase N: '' borra el dato (la descripción es opcional).
+        actualizarClinica: z.object({
+            direccion: z.string().trim().max(200),
+            descripcion: z.string().trim().max(1000),
+        }),
+        // Fase N2: aparecer (o no) en la reserva pública de turnos.
+        turnosOnline: z.object({ activo: z.boolean() }),
     },
 
     clinica: {
@@ -201,6 +208,8 @@ module.exports = {
     profesional: {
         saveDesc: z.object({ descripcion: z.string().max(2000, 'Descripción demasiado larga') }),
         savePrecio: z.object({ precio: z.union([z.string().max(50), z.number()]) }),
+        // Fase N3: aparecer (o no) en la reserva pública de turnos.
+        saveTurnosOnline: z.object({ activo: z.boolean() }),
         saveDirec: z.object({ direccion: z.string().max(200, 'Dirección demasiado larga') }),
     },
 

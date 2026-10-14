@@ -10,6 +10,7 @@
     "dev": "node --watch index.js",
     "whisper:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File ../whisper/setup.ps1",
     "whisper": "powershell -NoProfile -ExecutionPolicy Bypass -File ../whisper/start.ps1",
+    "whisper:medir": "node ../whisper/benchmark.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

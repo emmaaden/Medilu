@@ -25,7 +25,7 @@ exports.info = async (req, res) => {
 
         const { data, error } = await db
             .from('clinica')
-            .select('nombre, slug')
+            .select('nombre, slug, turnos_online')
             .eq('id', clinicaId)
             .maybeSingle();
         if (error) return res.status(400).json({ error: error.message });

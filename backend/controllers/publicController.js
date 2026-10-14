@@ -9,7 +9,7 @@ const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-const planes = require('../utils/planes');
+const { clinicasSinTurnosOnline } = require('../utils/turnosOnline'); // Fase N2
 
 // Resuelve un slug de clínica a su fila (id, nombre, slug). Devuelve null si no existe.
 async function resolverClinicaPorSlug(slug) {
@@ -17,7 +17,7 @@ async function resolverClinicaPorSlug(slug) {
     if (!s) return null;
     const { data, error } = await supabase
         .from('clinica')
-        .select('id, nombre, slug')
+        .select('id, nombre, slug, direccion, descripcion')
         .eq('slug', s)
         .eq('activa', true)
         .maybeSingle();
@@ -41,15 +41,44 @@ exports.clinicaPublica = async (req, res) => {
     try {
         const clinica = await resolverClinicaPorSlug(req.query.clinica);
         if (!clinica) return res.status(404).json({ error: 'Clínica no encontrada.' });
-        // Fase L: con la suscripción vencida la clínica no recibe turnos online.
-        const sinServicio = await planes.clinicasSinServicio();
+        // Fase L/N2: sin suscripción vigente o con los turnos online apagados, no recibe reservas.
+        const sinServicio = await clinicasSinTurnosOnline();
         return res.json({
             id: clinica.id, nombre: clinica.nombre, slug: clinica.slug,
+            direccion: clinica.direccion || null, descripcion: clinica.descripcion || null,
             recibeTurnos: !sinServicio.has(clinica.id),
         });
     } catch (err) {
         console.error('Error en clinica-publica:', err);
         return res.status(500).json({ error: 'Error al obtener la clínica.' });
+    }
+};
+
+// GET /clinica-publica/lista
+// Fase N: clínicas donde el paciente puede sacar turno (activas, con slug y con la
+// suscripción vigente y con los turnos online prendidos), para elegir una antes de reservar.
+// Respuesta: [ { slug, nombre, direccion, descripcion } ]
+exports.listarClinicas = async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('clinica')
+            .select('id, nombre, slug, direccion, descripcion')
+            .eq('activa', true)
+            .not('slug', 'is', null)
+            .order('nombre', { ascending: true });
+        if (error) throw error;
+        const sinServicio = await clinicasSinTurnosOnline();
+        return res.json(
+            (data || [])
+                .filter((c) => !sinServicio.has(c.id))
+                .map((c) => ({
+                    slug: c.slug, nombre: c.nombre,
+                    direccion: c.direccion || null, descripcion: c.descripcion || null,
+                }))
+        );
+    } catch (err) {
+        console.error('Error listando clínicas:', err);
+        return res.status(500).json({ error: 'Error al obtener las clínicas.' });
     }
 };
 
@@ -72,11 +101,11 @@ exports.listProfessionals = async (req, res) => {
             .from('especialidad_profesional')
             .select(`
                 especialidad:id_especialidad ( nombre ),
-                profesional:id_profesional ( id, persona ( nombre, apellido, clinica_id ) )
+                profesional:id_profesional ( id, turnos_online, persona ( nombre, apellido, clinica_id ) )
             `);
         if (error) throw error;
-        // Fase L: fuera los profesionales de clínicas con la suscripción vencida.
-        const sinServicio = await planes.clinicasSinServicio();
+        // Fase L/N2: fuera los profesionales de clínicas que no reciben turnos online.
+        const sinServicio = await clinicasSinTurnosOnline();
 
         const porArea = new Map();
         for (const row of data || []) {
@@ -84,7 +113,8 @@ exports.listProfessionals = async (req, res) => {
             const p = row.profesional;
             if (!area || !p) continue;
             if (idsPermitidos && !idsPermitidos.has(p.id)) continue; // fuera de la clínica
-            if (p.persona && sinServicio.has(p.persona.clinica_id)) continue; // sin suscripción vigente
+            if (p.persona && sinServicio.has(p.persona.clinica_id)) continue; // no recibe turnos online
+            if (p.turnos_online === false) continue; // Fase N3: el profesional no toma turnos online
 
             const nombre = [p.persona && p.persona.nombre, p.persona && p.persona.apellido]
                 .filter(Boolean)
@@ -123,10 +153,10 @@ exports.getBookingHours = async (req, res) => {
                 id_profesional,
                 horario_inicio,
                 horario_fin,
-                profesional:id_profesional ( id, persona ( nombre, apellido, clinica_id ) )
+                profesional:id_profesional ( id, turnos_online, persona ( nombre, apellido, clinica_id ) )
             `);
         if (error) throw error;
-        const sinServicio = await planes.clinicasSinServicio();
+        const sinServicio = await clinicasSinTurnosOnline();
 
         const agg = new Map();
         for (const h of data || []) {
@@ -135,7 +165,8 @@ exports.getBookingHours = async (req, res) => {
             if (idsPermitidos && !idsPermitidos.has(id)) continue;
 
             const persona = h.profesional && h.profesional.persona;
-            if (persona && sinServicio.has(persona.clinica_id)) continue; // sin suscripción vigente
+            if (persona && sinServicio.has(persona.clinica_id)) continue; // no recibe turnos online
+            if (h.profesional && h.profesional.turnos_online === false) continue; // Fase N3
             const fullName = [persona && persona.nombre, persona && persona.apellido]
                 .filter(Boolean)
                 .join(' ');

@@ -45,6 +45,7 @@ import {
 import { Container } from "@/components/site/Section"
 import { SelectField } from "@/components/form/SelectField"
 import { CatalogosClinica } from "@/components/dashboard/CatalogosClinica"
+import { DatosClinica } from "@/components/dashboard/DatosClinica"
 import { useObrasSociales } from "@/lib/catalogos"
 import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
@@ -245,12 +246,15 @@ export default function Administracion() {
       <div className="mb-8">
         <h1 className="text-2xl font-semibold sm:text-3xl">Administración</h1>
         <p className="mt-1 text-muted-foreground">
-          Gestioná los profesionales de tu clínica y los códigos de activación.
+          Gestioná los datos de tu clínica, sus profesionales y los códigos de activación.
         </p>
       </div>
 
+      {/* Fase N: dirección y descripción que ve el paciente al reservar */}
+      <DatosClinica />
+
       {/* Profesionales / miembros */}
-      <Card>
+      <Card className="mt-6">
         <CardContent className="p-4 sm:p-6">
           <h2 className="flex items-center gap-2 text-lg font-semibold">
             <Users className="size-5 text-primary" /> Profesionales

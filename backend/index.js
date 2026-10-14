@@ -36,6 +36,7 @@ const { getMembresiasActivas } = require('./utils/membresias');
 const { generarTokenGestion } = require('./utils/turnoToken');
 const { sendMail, isMailerConfigured } = require('./utils/mailer');
 const { slotsDisponibles, estaLibre } = require('./utils/disponibilidad');
+const { turnosOnlineApagados } = require('./utils/turnosOnline'); // Fase N2
 const { validate } = require('./middleware/validate');
 const schemas = require('./validators/schemas');
 const planes = require('./utils/planes');
@@ -399,6 +400,7 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
         const { data: prof, error: profError } = await supabase
             .from('profesional')
             .select(`
+                turnos_online,
                 persona:id_persona ( clinica_id, nombre, apellido ),
                 especialidad_profesional ( especialidad:id_especialidad ( nombre ) )
             `)
@@ -406,6 +408,10 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
             .maybeSingle();
         if (profError) throw profError;
         if (!prof) return res.status(404).json({ error: 'Profesional no encontrado' });
+        // Fase N3: el profesional puede no ofrecer reservas online.
+        if (prof.turnos_online === false) {
+            return res.status(403).json({ error: 'Este profesional no toma turnos online. Comunicate directamente con la clínica.' });
+        }
 
         // clinica_id del turno: se deriva SIEMPRE del profesional (para que aparezca
         // en el panel de su clínica). El slug, si viene, solo valida pertenencia.
@@ -414,6 +420,10 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
         // Fase L: una clínica con la suscripción vencida no recibe turnos online.
         if (clinicaProf && (await planes.getPlanClinica(clinicaProf)).soloLectura) {
             return res.status(403).json({ error: 'Este profesional no está tomando turnos online por el momento.' });
+        }
+        // Fase N2: la clínica puede usar el sistema sin ofrecer reservas online.
+        if (await turnosOnlineApagados(clinicaProf)) {
+            return res.status(403).json({ error: 'Esta clínica no toma turnos online. Comunicate directamente con la clínica.' });
         }
 
         // 2. Si la reserva es sobre una clínica, el profesional debe ser de esa clínica.

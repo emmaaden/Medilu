@@ -10,5 +10,10 @@ router.use(requireRole('profesional'), requireClinicaAdmin);
 
 router.get('/miembros', adminController.listarMiembros);
 router.patch('/miembros/:id', validate(schemas.admin.actualizarMiembro), adminController.actualizarMiembro);
+// Fase N: datos públicos de la clínica (los ve el paciente al elegirla para reservar).
+router.get('/clinica', adminController.obtenerClinica);
+router.put('/clinica', validate(schemas.admin.actualizarClinica), adminController.actualizarClinica);
+// Fase N2: la clínica decide si recibe turnos online.
+router.put('/clinica/turnos-online', validate(schemas.admin.turnosOnline), adminController.actualizarTurnosOnline);
 
 module.exports = router;
