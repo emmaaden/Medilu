@@ -41,7 +41,7 @@ const accesos = [
     to: "/dashboard/config",
     icon: UserCog,
     title: "Mi perfil",
-    description: "Actualizá tus datos, precio y descripción.",
+    description: "Actualizá tus datos, descripción y horarios.",
   },
 ]
 

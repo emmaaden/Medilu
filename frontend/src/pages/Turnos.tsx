@@ -10,10 +10,12 @@ import {
   CalendarClock,
   Building2,
   LogIn,
+  MapPin,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Field } from "@/components/form/Field"
 import { SelectField } from "@/components/form/SelectField"
 import { Container, PageHero } from "@/components/site/Section"
@@ -33,6 +35,16 @@ import { Consentimiento, CONSENTIMIENTO_REQUERIDO } from "@/components/form/Cons
 
 type Professional = { id: number | string; nombre: string; id_calendario?: string }
 type ProfArea = { area: string; professionals: Professional[] }
+// Fase N: el paciente elige la clínica (con su dirección y descripción) antes de reservar.
+type ClinicaPublica = {
+  slug: string
+  nombre: string
+  direccion: string | null
+  descripcion: string | null
+}
+
+const mapsUrl = (direccion: string) =>
+  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`
 
 const COUNTRIES = [
   { name: "Argentina", code: "+54" },
@@ -60,16 +72,16 @@ function formatSlotLocal(iso: string) {
   })
 }
 
-type View = "menu" | "reservar"
+type View = "menu" | "clinica" | "reservar"
 
 export default function Turnos() {
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const clinica = params.get("clinica") || ""
   const { user } = useUser()
 
   const [view, setView] = useState<View>("menu")
   const [areas, setAreas] = useState<ProfArea[]>([])
-  const [clinicaNombre, setClinicaNombre] = useState<string | null>(null)
+  const [clinicaInfo, setClinicaInfo] = useState<ClinicaPublica | null>(null)
   // Fase L: una clínica con la suscripción vencida no recibe turnos online.
   const [recibeTurnos, setRecibeTurnos] = useState(true)
 
@@ -77,26 +89,41 @@ export default function Turnos() {
   const [profId, setProfId] = useState("")
 
   useEffect(() => {
-    const url = clinica
-      ? `/professionals?clinica=${encodeURIComponent(clinica)}`
-      : "/professionals"
+    setArea("")
+    setProfId("")
+    setAreas([])
+    setClinicaInfo(null)
+    setRecibeTurnos(true)
+    // Sin clínica elegida no se listan profesionales: primero se elige la clínica.
+    if (!clinica) return
+
     api
-      .get<ProfArea[]>(url)
+      .get<ProfArea[]>(`/professionals?clinica=${encodeURIComponent(clinica)}`)
       .then((d) => setAreas(Array.isArray(d) ? d : []))
       .catch(() => toast.error("No se pudieron cargar los profesionales"))
 
-    if (clinica) {
-      api
-        .get<{ nombre?: string; recibeTurnos?: boolean }>(
-          `/clinica-publica?clinica=${encodeURIComponent(clinica)}`
-        )
-        .then((d) => {
-          if (d?.nombre) setClinicaNombre(d.nombre)
-          setRecibeTurnos(d?.recibeTurnos !== false)
-        })
-        .catch(() => {})
-    }
+    api
+      .get<ClinicaPublica & { recibeTurnos?: boolean }>(
+        `/clinica-publica?clinica=${encodeURIComponent(clinica)}`
+      )
+      .then((d) => {
+        if (d?.nombre) setClinicaInfo(d)
+        setRecibeTurnos(d?.recibeTurnos !== false)
+      })
+      .catch(() => {})
   }, [clinica])
+
+  function elegirClinica(slug: string) {
+    setParams({ clinica: slug })
+    setView("reservar")
+  }
+
+  function cambiarClinica() {
+    setParams({})
+    setView("clinica")
+  }
+
+  const clinicaNombre = clinicaInfo?.nombre ?? null
 
   const areaOptions = useMemo(
     () => areas.map((a) => ({ value: a.area, label: a.area })),
@@ -121,17 +148,20 @@ export default function Turnos() {
       .find((a) => a.area === area)
       ?.professionals.find((p) => String(p.id) === profId)?.nombre || ""
 
+  // Si se pierde la clínica de la URL (p. ej. con el botón Atrás), se vuelve a elegir.
+  const paso: View = view === "reservar" && !clinica ? "clinica" : view
+
   return (
     <>
       <PageHero
         eyebrow="Turnos"
         title={clinicaNombre ? `Turnos · ${clinicaNombre}` : "Reservá tu turno"}
-        description="Elegí especialidad y profesional para ver la disponibilidad en tiempo real."
+        description="Elegí la clínica, la especialidad y el profesional para ver la disponibilidad en tiempo real."
       />
 
       <Container className="py-12">
         <div className="mx-auto max-w-2xl">
-          {clinicaNombre && (
+          {clinicaNombre && paso === "menu" && (
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1 text-sm text-muted-foreground">
               <Building2 className="size-4 text-primary" /> {clinicaNombre}
             </div>
@@ -144,12 +174,12 @@ export default function Turnos() {
             </p>
           )}
 
-          {view === "menu" && (
+          {paso === "menu" && (
             <div className="grid gap-4 sm:grid-cols-2">
               {recibeTurnos && (
               <button
                 type="button"
-                onClick={() => setView("reservar")}
+                onClick={() => setView(clinica ? "reservar" : "clinica")}
                 className="group rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 <Card className="h-full transition-[translate,box-shadow] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:ring-primary/40 motion-reduce:group-hover:translate-y-0">
@@ -200,13 +230,26 @@ export default function Turnos() {
             </div>
           )}
 
-          {view !== "menu" && (
+          {paso === "clinica" && (
+            <>
+              <Button variant="ghost" onClick={reset} className="mb-4">
+                <ArrowLeft /> Volver
+              </Button>
+              <ClinicaPicker onPick={elegirClinica} />
+            </>
+          )}
+
+          {paso === "reservar" && (
             <>
               <Button variant="ghost" onClick={reset} className="mb-4">
                 <ArrowLeft /> Volver
               </Button>
 
-              <Card>
+              {clinicaInfo && (
+                <ClinicaResumen clinica={clinicaInfo} onCambiar={cambiarClinica} />
+              )}
+
+              <Card className="mt-6">
                 <CardContent className="space-y-4 p-6">
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field label="Especialidad" htmlFor="area" required>
@@ -239,11 +282,12 @@ export default function Turnos() {
                 </CardContent>
               </Card>
 
-              {profId && view === "reservar" && (
+              {profId && (
                 <ReservarForm
                   profId={profId}
                   profName={profName}
                   clinica={clinica}
+                  clinicaInfo={clinicaInfo}
                   prefillName={user?.fullName || ""}
                   prefillEmail={user?.email || ""}
                   lockEmail={!!user}
@@ -260,12 +304,130 @@ export default function Turnos() {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Elegir clínica (Fase N)                                                    */
+/* -------------------------------------------------------------------------- */
+function ClinicaPicker({ onPick }: { onPick: (slug: string) => void }) {
+  const [clinicas, setClinicas] = useState<ClinicaPublica[] | null>(null)
+
+  useEffect(() => {
+    api
+      .get<ClinicaPublica[]>("/clinica-publica/lista")
+      .then((d) => setClinicas(Array.isArray(d) ? d : []))
+      .catch(() => {
+        setClinicas([])
+        toast.error("No se pudieron cargar las clínicas")
+      })
+  }, [])
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold">Elegí la clínica</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Revisá dónde queda antes de reservar tu turno.
+      </p>
+
+      {clinicas === null ? (
+        <div className="mt-5 grid gap-3">
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+        </div>
+      ) : clinicas.length === 0 ? (
+        <p className="mt-5 rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground" role="status">
+          No hay clínicas tomando turnos online por el momento.
+        </p>
+      ) : (
+        <ul className="mt-5 grid gap-3">
+          {clinicas.map((c) => (
+            <li key={c.slug}>
+              <button
+                type="button"
+                onClick={() => onPick(c.slug)}
+                className="group w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <Card className="transition-[translate,box-shadow] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:ring-primary/40 motion-reduce:group-hover:translate-y-0">
+                  <CardContent className="flex items-start gap-4 p-4 sm:p-5">
+                    <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                      <Building2 className="size-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold">{c.nombre}</h3>
+                      <p className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground">
+                        <MapPin className="mt-0.5 size-4 shrink-0" />
+                        <span className="min-w-0 break-words">
+                          {c.direccion || "Dirección no informada"}
+                        </span>
+                      </p>
+                      {c.descripcion && (
+                        <p className="mt-2 line-clamp-3 text-sm break-words whitespace-pre-line">
+                          {c.descripcion}
+                        </p>
+                      )}
+                    </div>
+                    <ArrowRight className="mt-1 size-4 shrink-0 text-primary" />
+                  </CardContent>
+                </Card>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function ClinicaResumen({
+  clinica,
+  onCambiar,
+}: {
+  clinica: ClinicaPublica
+  onCambiar: () => void
+}) {
+  return (
+    <Card>
+      <CardContent className="flex flex-wrap items-start gap-4 p-4 sm:p-6">
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+          <Building2 className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1 basis-48">
+          <h2 className="text-lg font-semibold">{clinica.nombre}</h2>
+          {clinica.direccion ? (
+            <a
+              href={mapsUrl(clinica.direccion)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-flex items-start gap-1.5 text-sm text-primary underline-offset-4 hover:underline"
+            >
+              <MapPin className="mt-0.5 size-4 shrink-0" />
+              <span className="min-w-0 break-words">{clinica.direccion}</span>
+              <span className="sr-only"> (abre Google Maps)</span>
+            </a>
+          ) : (
+            <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+              <MapPin className="size-4" /> Dirección no informada
+            </p>
+          )}
+          {clinica.descripcion && (
+            <p className="mt-3 text-sm break-words whitespace-pre-line text-muted-foreground">
+              {clinica.descripcion}
+            </p>
+          )}
+        </div>
+        <Button variant="outline" size="sm" onClick={onCambiar}>
+          Cambiar clínica
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
 /* Reservar                                                                   */
 /* -------------------------------------------------------------------------- */
 function ReservarForm({
   profId,
   profName,
   clinica,
+  clinicaInfo,
   prefillName,
   prefillEmail,
   lockEmail,
@@ -274,6 +436,7 @@ function ReservarForm({
   profId: string
   profName: string
   clinica: string
+  clinicaInfo: ClinicaPublica | null
   prefillName: string
   prefillEmail: string
   lockEmail: boolean
@@ -542,6 +705,10 @@ function ReservarForm({
             </DialogDescription>
           </DialogHeader>
           <dl className="space-y-2 text-sm">
+            {clinicaInfo && <Row label="Clínica" value={clinicaInfo.nombre} />}
+            {clinicaInfo?.direccion && (
+              <Row label="Dirección" value={clinicaInfo.direccion} />
+            )}
             <Row label="Profesional" value={profName} />
             <Row label="Fecha y hora" value={slot ? `${formatSlotLocal(slot)}hs` : "—"} />
             <Row label="Nombre" value={name} />

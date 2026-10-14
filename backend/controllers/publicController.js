@@ -17,7 +17,7 @@ async function resolverClinicaPorSlug(slug) {
     if (!s) return null;
     const { data, error } = await supabase
         .from('clinica')
-        .select('id, nombre, slug')
+        .select('id, nombre, slug, direccion, descripcion')
         .eq('slug', s)
         .eq('activa', true)
         .maybeSingle();
@@ -45,11 +45,40 @@ exports.clinicaPublica = async (req, res) => {
         const sinServicio = await planes.clinicasSinServicio();
         return res.json({
             id: clinica.id, nombre: clinica.nombre, slug: clinica.slug,
+            direccion: clinica.direccion || null, descripcion: clinica.descripcion || null,
             recibeTurnos: !sinServicio.has(clinica.id),
         });
     } catch (err) {
         console.error('Error en clinica-publica:', err);
         return res.status(500).json({ error: 'Error al obtener la clínica.' });
+    }
+};
+
+// GET /clinica-publica/lista
+// Fase N: clínicas donde el paciente puede sacar turno (activas, con slug y con la
+// suscripción vigente), para elegir una antes de reservar.
+// Respuesta: [ { slug, nombre, direccion, descripcion } ]
+exports.listarClinicas = async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('clinica')
+            .select('id, nombre, slug, direccion, descripcion')
+            .eq('activa', true)
+            .not('slug', 'is', null)
+            .order('nombre', { ascending: true });
+        if (error) throw error;
+        const sinServicio = await planes.clinicasSinServicio();
+        return res.json(
+            (data || [])
+                .filter((c) => !sinServicio.has(c.id))
+                .map((c) => ({
+                    slug: c.slug, nombre: c.nombre,
+                    direccion: c.direccion || null, descripcion: c.descripcion || null,
+                }))
+        );
+    } catch (err) {
+        console.error('Error listando clínicas:', err);
+        return res.status(500).json({ error: 'Error al obtener las clínicas.' });
     }
 };
 

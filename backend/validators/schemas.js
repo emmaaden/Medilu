@@ -99,6 +99,11 @@ module.exports = {
             // Fase K: alcance por obra social del catálogo (null = interno).
             alcanceIdObraSocial: idCatalogo.nullable().optional(),
         }),
+        // Fase N: '' borra el dato (la descripción es opcional).
+        actualizarClinica: z.object({
+            direccion: z.string().trim().max(200),
+            descripcion: z.string().trim().max(1000),
+        }),
     },
 
     clinica: {

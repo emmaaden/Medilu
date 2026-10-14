@@ -10,5 +10,8 @@ router.use(requireRole('profesional'), requireClinicaAdmin);
 
 router.get('/miembros', adminController.listarMiembros);
 router.patch('/miembros/:id', validate(schemas.admin.actualizarMiembro), adminController.actualizarMiembro);
+// Fase N: datos públicos de la clínica (los ve el paciente al elegirla para reservar).
+router.get('/clinica', adminController.obtenerClinica);
+router.put('/clinica', validate(schemas.admin.actualizarClinica), adminController.actualizarClinica);
 
 module.exports = router;

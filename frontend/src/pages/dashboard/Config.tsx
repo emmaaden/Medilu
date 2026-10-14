@@ -8,7 +8,6 @@ import {
   Pencil,
   Trash2,
   MapPin,
-  DollarSign,
   FileText,
   Clock,
 } from "lucide-react"
@@ -35,7 +34,6 @@ type Datos = {
   apellido?: string
   direccion?: string
   descripcion?: string
-  precio?: string | number
 }
 type Horario = {
   id: string | number
@@ -278,16 +276,6 @@ function PerfilEditor({
         onSaved={(v) => onSaved({ direccion: v })}
       />
       <SaveRow
-        icon={DollarSign}
-        label="Precio de la consulta"
-        endpoint="/profesional/save-precio"
-        field="precio"
-        type="number"
-        idRole={idRole}
-        initial={String(datos.precio ?? "")}
-        onSaved={(v) => onSaved({ precio: v })}
-      />
-      <SaveRow
         icon={FileText}
         label="Descripción"
         endpoint="/profesional/save-desc"
@@ -329,7 +317,7 @@ function SaveRow({
   async function guardar() {
     setSaving(true)
     try {
-      // Los endpoints usan la clave del campo en el body (direccion/precio/descripcion).
+      // Los endpoints usan la clave del campo en el body (direccion/descripcion).
       await api.post(endpoint, { user_id: idRole, [field]: value })
       toast.success(`${label} actualizada`)
       onSaved(value)
