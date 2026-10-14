@@ -101,22 +101,27 @@ export function Navbar() {
                   <Logo />
                 </SheetTitle>
               </SheetHeader>
-              <nav aria-label="Principal" className="flex flex-col gap-1 px-4">
+              <nav
+                aria-label="Principal"
+                className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-4"
+              >
+                {/* Sin <SheetClose asChild>: su Slot convierte el className-función de
+                    NavLink en texto y el enlace se queda sin estilos. */}
                 {NAV_LINKS.map((l) => (
-                  <SheetClose asChild key={l.to}>
-                    <NavLink
-                      to={l.to}
-                      end={l.to === "/"}
-                      className={({ isActive }) =>
-                        cn(
-                          "rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                          isActive && "bg-accent text-accent-foreground"
-                        )
-                      }
-                    >
-                      {l.label}
-                    </NavLink>
-                  </SheetClose>
+                  <NavLink
+                    key={l.to}
+                    to={l.to}
+                    end={l.to === "/"}
+                    onClick={() => setOpen(false)}
+                    className={({ isActive }) =>
+                      cn(
+                        "rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                        isActive && "bg-accent text-accent-foreground"
+                      )
+                    }
+                  >
+                    {l.label}
+                  </NavLink>
                 ))}
                 <a
                   href={HELP_URL}
