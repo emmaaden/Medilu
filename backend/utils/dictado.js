@@ -92,11 +92,35 @@ const ALUCINACIONES = [
     /^\W*(gracias|ch[aá]u|adi[oó]s)\W*$/i,
 ];
 
+// Whisper a veces entra en bucle y repite lo último que dijo ("…pautas de alarma.
+// Nebulizaciones con… pautas de alarma."). Se borra la segunda copia de cualquier
+// secuencia de MIN_REPETIDA o más palabras que se repita inmediatamente.
+const MIN_REPETIDA = 4;
+
+function sinRepeticiones(texto) {
+    const palabras = texto.split(' ');
+    const norm = palabras.map((p) => p.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''));
+    for (let largo = Math.floor(palabras.length / 2); largo >= MIN_REPETIDA; largo--) {
+        for (let i = 0; i + 2 * largo <= palabras.length; i++) {
+            let igual = true;
+            for (let k = 0; k < largo && igual; k++) igual = norm[i + k] === norm[i + largo + k];
+            if (igual) {
+                palabras[i + largo - 1] = palabras[i + 2 * largo - 1]; // la puntuación final de la copia borrada
+                palabras.splice(i + largo, largo);
+                return sinRepeticiones(palabras.join(' '));
+            }
+        }
+    }
+    return texto;
+}
+
 function limpiar(texto) {
-    const t = String(texto || '')
-        .replace(/\[[^\]]*\]|\([^)]*\b(m[uú]sica|risas|aplausos|ruido)\b[^)]*\)/gi, '') // [BLANK_AUDIO], (música)…
-        .replace(/\s+/g, ' ')
-        .trim();
+    const t = sinRepeticiones(
+        String(texto || '')
+            .replace(/\[[^\]]*\]|\([^)]*\b(m[uú]sica|risas|aplausos|ruido)\b[^)]*\)/gi, '') // [BLANK_AUDIO], (música)…
+            .replace(/\s+/g, ' ')
+            .trim()
+    );
     if (!/\p{L}/u.test(t)) return '';
     if (ALUCINACIONES.some((re) => re.test(t))) return '';
     return t;
