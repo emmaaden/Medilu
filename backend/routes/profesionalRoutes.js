@@ -14,4 +14,6 @@ router.post('/get-datos-prof', profesionalController.getDatosProf);
 router.post('/save-direc', validate(schemas.profesional.saveDirec), profesionalController.saveDirec);
 router.post('/save-precio', validate(schemas.profesional.savePrecio), profesionalController.savePrecio);
 router.post('/save-desc', validate(schemas.profesional.saveDesc), profesionalController.saveDesc);
+// Fase N3: el profesional decide si recibe turnos online.
+router.post('/save-turnos-online', validate(schemas.profesional.saveTurnosOnline), profesionalController.saveTurnosOnline);
 module.exports = router;

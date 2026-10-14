@@ -101,7 +101,7 @@ exports.listProfessionals = async (req, res) => {
             .from('especialidad_profesional')
             .select(`
                 especialidad:id_especialidad ( nombre ),
-                profesional:id_profesional ( id, persona ( nombre, apellido, clinica_id ) )
+                profesional:id_profesional ( id, turnos_online, persona ( nombre, apellido, clinica_id ) )
             `);
         if (error) throw error;
         // Fase L/N2: fuera los profesionales de clínicas que no reciben turnos online.
@@ -114,6 +114,7 @@ exports.listProfessionals = async (req, res) => {
             if (!area || !p) continue;
             if (idsPermitidos && !idsPermitidos.has(p.id)) continue; // fuera de la clínica
             if (p.persona && sinServicio.has(p.persona.clinica_id)) continue; // no recibe turnos online
+            if (p.turnos_online === false) continue; // Fase N3: el profesional no toma turnos online
 
             const nombre = [p.persona && p.persona.nombre, p.persona && p.persona.apellido]
                 .filter(Boolean)
@@ -152,7 +153,7 @@ exports.getBookingHours = async (req, res) => {
                 id_profesional,
                 horario_inicio,
                 horario_fin,
-                profesional:id_profesional ( id, persona ( nombre, apellido, clinica_id ) )
+                profesional:id_profesional ( id, turnos_online, persona ( nombre, apellido, clinica_id ) )
             `);
         if (error) throw error;
         const sinServicio = await clinicasSinTurnosOnline();
@@ -165,6 +166,7 @@ exports.getBookingHours = async (req, res) => {
 
             const persona = h.profesional && h.profesional.persona;
             if (persona && sinServicio.has(persona.clinica_id)) continue; // no recibe turnos online
+            if (h.profesional && h.profesional.turnos_online === false) continue; // Fase N3
             const fullName = [persona && persona.nombre, persona && persona.apellido]
                 .filter(Boolean)
                 .join(' ');

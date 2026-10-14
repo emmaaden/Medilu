@@ -10,8 +10,11 @@ import {
   MapPin,
   FileText,
   Clock,
+  CalendarCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent } from "@/components/ui/card"
@@ -26,7 +29,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { api } from "@/lib/api"
+import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
 
 type Datos = {
@@ -34,6 +37,8 @@ type Datos = {
   apellido?: string
   direccion?: string
   descripcion?: string
+  // Fase N3: si aparece en la reserva pública de turnos.
+  turnos_online?: boolean
 }
 type Horario = {
   id: string | number
@@ -266,6 +271,10 @@ function PerfilEditor({
 }) {
   return (
     <div className="mt-4 grid gap-4">
+      <TurnosOnlineCard
+        activo={datos.turnos_online !== false}
+        onSaved={(v) => onSaved({ turnos_online: v })}
+      />
       <SaveRow
         icon={MapPin}
         label="Dirección"
@@ -286,6 +295,81 @@ function PerfilEditor({
         onSaved={(v) => onSaved({ descripcion: v })}
       />
     </div>
+  )
+}
+
+// Fase N3: el profesional decide si aparece en la reserva online. Se guarda al
+// instante. Si la clínica tiene los turnos online apagados, manda la clínica.
+function TurnosOnlineCard({
+  activo,
+  onSaved,
+}: {
+  activo: boolean
+  onSaved: (activo: boolean) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [clinicaApagada, setClinicaApagada] = useState(false)
+
+  useEffect(() => {
+    api
+      .get<{ clinica?: { turnos_online?: boolean } | null }>("/clinica/info")
+      .then((d) => setClinicaApagada(d.clinica?.turnos_online === false))
+      .catch(() => {})
+  }, [])
+
+  async function cambiar(v: boolean) {
+    setSaving(true)
+    try {
+      await api.post("/profesional/save-turnos-online", { activo: v })
+      onSaved(v)
+      toast.success(
+        v
+          ? "Ya aparecés para que te saquen turnos online."
+          : "Dejaste de aparecer para turnos online."
+      )
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "No se pudo cambiar la opción.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="flex items-start justify-between gap-4 p-5">
+        <div className="flex min-w-0 gap-3">
+          <span className="mt-0.5 hidden text-muted-foreground sm:block">
+            <CalendarCheck className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <Label htmlFor="turnos-online" className="text-sm font-medium">
+              Recibir turnos online
+            </Label>
+            <p id="turnos-online-hint" className="mt-1 text-sm text-muted-foreground">
+              {activo
+                ? "Los pacientes pueden sacarte turno desde la web."
+                : "No aparecés en la reserva online. La recepción puede seguir cargándote turnos desde el panel."}
+            </p>
+            {clinicaApagada && (
+              <p className="mt-2 text-sm text-muted-foreground" role="status">
+                Tu clínica tiene los turnos online desactivados, así que por ahora
+                no aparecés aunque esta opción esté activa.
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2 pt-0.5">
+          {saving && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+          <Switch
+            id="turnos-online"
+            aria-describedby="turnos-online-hint"
+            checked={activo}
+            disabled={saving}
+            onCheckedChange={cambiar}
+          />
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

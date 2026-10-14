@@ -24,7 +24,8 @@ exports.getDatosProf = async (req, res) => {
                     telefono,
                     matricula,
                     descripcion,
-                    precio
+                    precio,
+                    turnos_online
                 )
             `)
             .eq("id_auth", user_id)
@@ -45,6 +46,7 @@ exports.getDatosProf = async (req, res) => {
             descripcion: data.profesional[0].descripcion,
             precio: data.profesional[0].precio,
             direccion: data.profesional[0].direccion,
+            turnos_online: data.profesional[0].turnos_online !== false,
         });
     } catch (err) {
         console.error("Error interno del servidor:", err);
@@ -110,6 +112,35 @@ exports.saveDesc = async (req, res) => {
         res.status(200).json({ message: 'Descripcion guardada exitosamente', descripcion });
     } catch (error) {
         res.status(500).json({ error: 'Error al guardar la Descripcion', details: error.message });
+    }
+};
+
+// Fase N3: aparecer (o no) en la reserva pública de turnos.
+// Apagado, el staff sigue pudiendo cargarle turnos desde el panel.
+exports.saveTurnosOnline = async (req, res) => {
+    try {
+        const activo = req.body.activo === true;
+        const user_id = req.session.user.idRole; // profesional.id
+
+        const db = await getUserSupabase(req);
+        if (!db) return res.status(401).json(ERR_SESION);
+
+        const { data, error } = await db
+            .from("profesional")
+            .update({ turnos_online: activo })
+            .eq("id", user_id)
+            .select("turnos_online");
+
+        if (error) {
+            return res.status(400).json({ error: error.message });
+        }
+        if (!data || data.length === 0) {
+            return res.status(404).json({ error: 'Profesional no encontrado' });
+        }
+
+        res.status(200).json({ message: 'Turnos online actualizados', turnos_online: data[0].turnos_online });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al actualizar los turnos online', details: error.message });
     }
 };
 

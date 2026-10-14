@@ -394,6 +394,7 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
         const { data: prof, error: profError } = await supabase
             .from('profesional')
             .select(`
+                turnos_online,
                 persona:id_persona ( clinica_id, nombre, apellido ),
                 especialidad_profesional ( especialidad:id_especialidad ( nombre ) )
             `)
@@ -401,6 +402,10 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
             .maybeSingle();
         if (profError) throw profError;
         if (!prof) return res.status(404).json({ error: 'Profesional no encontrado' });
+        // Fase N3: el profesional puede no ofrecer reservas online.
+        if (prof.turnos_online === false) {
+            return res.status(403).json({ error: 'Este profesional no toma turnos online. Comunicate directamente con la clínica.' });
+        }
 
         // clinica_id del turno: se deriva SIEMPRE del profesional (para que aparezca
         // en el panel de su clínica). El slug, si viene, solo valida pertenencia.
