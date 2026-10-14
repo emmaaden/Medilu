@@ -21,7 +21,7 @@ import { ESTADO_LABEL, tieneFeature } from "@/lib/planes"
 
 type ClinicaInfo = {
   esAdmin?: boolean
-  clinica?: { nombre?: string; slug?: string }
+  clinica?: { nombre?: string; slug?: string; turnos_online?: boolean }
 }
 
 const accesos = [
@@ -138,7 +138,17 @@ export default function DashboardHome() {
               </div>
             </div>
 
-            {publicLink && (
+            {/* Fase N2: con los turnos online apagados el enlace no sirve para reservar. */}
+            {publicLink && clinica.clinica?.turnos_online === false && (
+              <p className="mt-5 rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground" role="status">
+                Tu clínica no está recibiendo turnos online. Podés activarlos desde{" "}
+                <Link to="/dashboard/admin" className="font-medium text-primary underline-offset-4 hover:underline">
+                  Administración
+                </Link>
+                .
+              </p>
+            )}
+            {publicLink && clinica.clinica?.turnos_online !== false && (
               <div className="mt-5">
                 <label className="text-sm font-medium">
                   Enlace público de turnos

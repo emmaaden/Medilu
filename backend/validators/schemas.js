@@ -104,6 +104,8 @@ module.exports = {
             direccion: z.string().trim().max(200),
             descripcion: z.string().trim().max(1000),
         }),
+        // Fase N2: aparecer (o no) en la reserva pública de turnos.
+        turnosOnline: z.object({ activo: z.boolean() }),
     },
 
     clinica: {

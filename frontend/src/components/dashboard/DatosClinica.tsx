@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { Field } from "@/components/form/Field"
 import { api, ApiError } from "@/lib/api"
 
@@ -16,6 +18,8 @@ type Clinica = {
   slug: string | null
   direccion: string | null
   descripcion: string | null
+  // Fase N2: si aparece en la reserva pública de turnos.
+  turnos_online: boolean
 }
 
 const MAX_DIRECCION = 200
@@ -26,6 +30,7 @@ export function DatosClinica() {
   const [direccion, setDireccion] = useState("")
   const [descripcion, setDescripcion] = useState("")
   const [guardando, setGuardando] = useState(false)
+  const [cambiandoOnline, setCambiandoOnline] = useState(false)
 
   useEffect(() => {
     api
@@ -64,6 +69,28 @@ export function DatosClinica() {
     }
   }
 
+  // Se guarda al instante: es una decisión, no un dato del formulario.
+  async function cambiarTurnosOnline(activo: boolean) {
+    setCambiandoOnline(true)
+    try {
+      const d = await api.put<{ clinica: Clinica }>("/admin/clinica/turnos-online", {
+        activo,
+      })
+      setClinica((c) => (c ? { ...c, turnos_online: d.clinica.turnos_online } : c))
+      toast.success(
+        activo
+          ? "Tu clínica ya aparece para sacar turnos online."
+          : "Tu clínica dejó de aparecer para sacar turnos online."
+      )
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "No se pudo cambiar la opción."
+      )
+    } finally {
+      setCambiandoOnline(false)
+    }
+  }
+
   return (
     <Card>
       <CardContent className="p-4 sm:p-6">
@@ -81,6 +108,32 @@ export function DatosClinica() {
             <Skeleton className="h-24 w-full" />
           </div>
         ) : (
+          <>
+          <div className="mt-5 flex items-start justify-between gap-4 rounded-lg border border-border p-4">
+            <div className="min-w-0">
+              <Label htmlFor="clinica-turnos-online" className="text-sm font-medium">
+                Recibir turnos online
+              </Label>
+              <p id="clinica-turnos-online-hint" className="mt-1 text-sm text-muted-foreground">
+                {clinica.turnos_online
+                  ? "Los pacientes pueden elegir tu clínica y sacar turno desde la web."
+                  : "Tu clínica no aparece en la reserva online. Tu equipo puede seguir cargando turnos desde el panel."}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 pt-0.5">
+              {cambiandoOnline && (
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              )}
+              <Switch
+                id="clinica-turnos-online"
+                aria-describedby="clinica-turnos-online-hint"
+                checked={clinica.turnos_online}
+                disabled={cambiandoOnline}
+                onCheckedChange={cambiarTurnosOnline}
+              />
+            </div>
+          </div>
+
           <form onSubmit={guardar} className="mt-5 grid gap-4">
             <Field label="Nombre" htmlFor="clinica-nombre">
               <Input
@@ -126,6 +179,7 @@ export function DatosClinica() {
               </Button>
             </div>
           </form>
+          </>
         )}
       </CardContent>
     </Card>
