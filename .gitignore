@@ -20,3 +20,6 @@ node_modules/
 # Motor de dictado local (binarios y modelos descargados por whisper/setup.ps1)
 whisper/bin/
 whisper/models/
+# Grabaciones de prueba del dictado y transcripciones del benchmark (whisper/benchmark.js)
+whisper/muestras/
+whisper/mediciones/
