@@ -37,7 +37,9 @@ const { fichasPaciente } = require('./utils/fichasPaciente'); // Fase O
 const { generarTokenGestion } = require('./utils/turnoToken');
 const { sendMail, isMailerConfigured } = require('./utils/mailer');
 const { mailTurno } = require('./utils/mailTurno');
-const { slotsDisponibles, estaLibre } = require('./utils/disponibilidad');
+const {
+    franjasDeFecha, slotsDisponibles, validarHorarioTurno, estaLibre, esSolapeTurno,
+} = require('./utils/disponibilidad');
 const { turnosOnlineApagados } = require('./utils/turnosOnline'); // Fase N2
 const { validate } = require('./middleware/validate');
 const schemas = require('./validators/schemas');
@@ -325,11 +327,6 @@ app.get('/api/user', async (req, res) => {
 // no contra Google Calendar. La lógica de slots/solapamiento vive en ese módulo.
 // ---------------------------------------------------------------------------
 
-// Normaliza un nombre de día (minúsculas, sin acentos) para comparar.
-function normalizarDia(s) {
-    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-}
-
 // Franjas horarias disponibles de un profesional para una fecha dada.
 // Respeta horario_profesional (por día de la semana) y excluye los eventos ya
 // agendados en su Google Calendar. El calendario se deriva del profesional.
@@ -348,11 +345,7 @@ app.get('/available-slots', validate(schemas.calendar.availableSlots, 'query'), 
         if (!prof) return res.status(404).json({ error: 'Profesional no encontrado' });
 
         // 2. Franjas del día de la semana pedido.
-        const diaSemana = normalizarDia(
-            new Date(`${date}T12:00:00-03:00`)
-                .toLocaleDateString('es-AR', { weekday: 'long', timeZone: 'America/Argentina/Buenos_Aires' })
-        );
-        const franjas = (prof.horario_profesional || []).filter(h => normalizarDia(h.dia) === diaSemana);
+        const franjas = franjasDeFecha(prof.horario_profesional, date);
         if (franjas.length === 0) return res.json([]); // no atiende ese día
 
         // 3. Slots libres = franjas − turnos reservados − bloqueos (Fase F, contra la base).
@@ -431,12 +424,17 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
             }
         }
 
-        // 3. Verificar que el horario siga libre (turnos reservados + bloqueos).
+        // 3. El horario tiene que ser uno de los slots que ofrece la página: 30', futuro
+        //    y dentro de la atención del profesional (auditoría 2026-10-15, #3).
+        const invalido = await validarHorarioTurno(profId, start.dateTime, end.dateTime);
+        if (invalido) return res.status(invalido.status).json({ error: invalido.error });
+
+        // 4. Verificar que el horario siga libre (turnos reservados + bloqueos).
         if (!(await estaLibre(profId, start.dateTime, end.dateTime))) {
             return res.status(409).json({ error: 'Ese horario ya no está disponible. Elegí otro.' });
         }
 
-        // 4. Registrar el turno (fuente de verdad del vínculo con la persona).
+        // 5. Registrar el turno (fuente de verdad del vínculo con la persona).
         //    - Paciente logueado -> se ata a su paciente.id (id_paciente).
         //    - Invitado          -> id_paciente NULL + manage_token para gestionarlo.
         //    Fase O: si el paciente tiene ficha en la clínica del turno, se ata a esa.
@@ -470,9 +468,13 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
         }
 
         const { error: insError } = await supabase.from('turno').insert(turnoRow);
+        // Otra reserva ganó el mismo horario entre el chequeo y el insert (Fase Q).
+        if (esSolapeTurno(insError)) {
+            return res.status(409).json({ error: 'Ese horario ya no está disponible. Elegí otro.' });
+        }
         if (insError) throw insError;
 
-        // 5. Email de confirmación (best-effort: no bloquea la reserva).
+        // 6. Email de confirmación (best-effort: no bloquea la reserva).
         // Enlace de gestión: los invitados reciben su token; los logueados van a "Mis turnos".
         sendMail({
             to: email,

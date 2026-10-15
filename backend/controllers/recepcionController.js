@@ -12,7 +12,7 @@ const { supabase } = require('../config/supabaseClient');
 const { generarTokenGestion } = require('../utils/turnoToken');
 const { sendMail } = require('../utils/mailer');
 const { mailTurno } = require('../utils/mailTurno');
-const { estaLibre } = require('../utils/disponibilidad');
+const { validarHorarioTurno, estaLibre, esSolapeTurno } = require('../utils/disponibilidad');
 
 // Campos del turno que se devuelven al panel del staff.
 const SELECT_STAFF = `
@@ -219,8 +219,9 @@ function enviarEmailTurno({ req, tipo, email, nombre, inicio, profesionalNombre,
 
 // ---------------------------------------------------------------------------
 // POST /staff/turnos  { profId, start, end, nombre, email, telefono?, dni? }
-// Crea un turno para un paciente. Valida que el profesional sea de la clínica activa
-// y que el horario siga libre (turnos reservados + bloqueos).
+// Crea un turno para un paciente. Valida que el profesional sea de la clínica activa,
+// que el horario sea un slot válido (30', futuro, dentro de la atención: lo mismo que
+// ofrece el panel) y que siga libre (turnos reservados + bloqueos).
 // ---------------------------------------------------------------------------
 exports.crearTurno = async (req, res) => {
     try {
@@ -245,7 +246,9 @@ exports.crearTurno = async (req, res) => {
         const profNombre = [prof.persona?.nombre, prof.persona?.apellido].filter(Boolean).join(' ') || null;
         const especialidad = prof.especialidad_profesional?.[0]?.especialidad?.nombre || null;
 
-        // 2. Verificar que el horario siga libre (turnos reservados + bloqueos).
+        // 2. Horario válido (auditoría 2026-10-15, #3) y libre (turnos reservados + bloqueos).
+        const invalido = await validarHorarioTurno(profId, start.dateTime, end.dateTime);
+        if (invalido) return res.status(invalido.status).json({ error: invalido.error });
         if (!(await estaLibre(profId, start.dateTime, end.dateTime))) {
             return res.status(409).json({ error: 'Ese horario no está disponible (ocupado o bloqueado).' });
         }
@@ -289,6 +292,9 @@ exports.crearTurno = async (req, res) => {
             .insert(turnoRow)
             .select(SELECT_STAFF)
             .single();
+        if (esSolapeTurno(insErr)) {
+            return res.status(409).json({ error: 'Ese horario no está disponible (ocupado o bloqueado).' });
+        }
         if (insErr) throw insErr;
 
         // 5. Email de confirmación (best-effort).
@@ -374,7 +380,9 @@ exports.reprogramarTurno = async (req, res) => {
             });
         }
 
-        // El nuevo horario debe estar libre (excluyendo este mismo turno).
+        // El nuevo horario debe ser un slot válido y estar libre (excluyendo este mismo turno).
+        const invalido = await validarHorarioTurno(turno.id_profesional, start.dateTime, end.dateTime);
+        if (invalido) return res.status(invalido.status).json({ error: invalido.error });
         if (!(await estaLibre(turno.id_profesional, start.dateTime, end.dateTime, id))) {
             return res.status(409).json({ error: 'Ese horario no está disponible (ocupado o bloqueado).' });
         }
@@ -386,6 +394,9 @@ exports.reprogramarTurno = async (req, res) => {
             .eq('clinica_id', clinicaId)
             .select(SELECT_STAFF)
             .single();
+        if (esSolapeTurno(error)) {
+            return res.status(409).json({ error: 'Ese horario no está disponible (ocupado o bloqueado).' });
+        }
         if (error) throw error;
 
         enviarEmailTurno({

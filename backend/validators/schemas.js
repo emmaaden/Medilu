@@ -133,16 +133,16 @@ module.exports = {
         }),
         crearTurno: z.object({
             profId: idFlexible,
-            start: z.object({ dateTime: z.string().min(1, 'Fecha/hora de inicio requerida') }),
-            end: z.object({ dateTime: z.string().min(1, 'Fecha/hora de fin requerida') }),
+            start: z.object({ dateTime: z.string().min(1, 'Fecha/hora de inicio requerida').max(40) }),
+            end: z.object({ dateTime: z.string().min(1, 'Fecha/hora de fin requerida').max(40) }),
             nombre: z.string().trim().min(1, 'Nombre del paciente requerido').max(120),
             email: z.email('Email inválido'),
             telefono: z.union([z.string().max(30), z.number()]).optional(),
             dni: z.string().trim().max(20).optional(),
         }),
         reprogramar: z.object({
-            start: z.object({ dateTime: z.string().min(1, 'Fecha/hora de inicio requerida') }),
-            end: z.object({ dateTime: z.string().min(1, 'Fecha/hora de fin requerida') }),
+            start: z.object({ dateTime: z.string().min(1, 'Fecha/hora de inicio requerida').max(40) }),
+            end: z.object({ dateTime: z.string().min(1, 'Fecha/hora de fin requerida').max(40) }),
         }),
         crearBloqueo: z.object({
             profId: idFlexible,
@@ -262,8 +262,8 @@ module.exports = {
             profId: idFlexible,
             clinica: z.string().trim().max(60).optional(),
             calendarId: z.string().optional(),
-            start: z.object({ dateTime: z.string().min(1, 'Fecha/hora de inicio requerida') }),
-            end: z.object({ dateTime: z.string().min(1, 'Fecha/hora de fin requerida') }),
+            start: z.object({ dateTime: z.string().min(1, 'Fecha/hora de inicio requerida').max(40) }),
+            end: z.object({ dateTime: z.string().min(1, 'Fecha/hora de fin requerida').max(40) }),
         }),
         // Nota: el buscador público por email y el borrado directo por eventId se
         // eliminaron en la Fase 3 (permitían enumerar/cancelar turnos ajenos). La

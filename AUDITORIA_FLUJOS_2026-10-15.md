@@ -224,7 +224,8 @@ INSERT para miembros). Hoy lo frena que los paths llevan UUID, pero un paciente 
 | # | Estado | Detalle |
 |---|--------|---------|
 | 1, 2, 4, 5, 6 | ✅ Aplicado en producción (2026-10-15) | `backend/db/faseP_endurecer_rls.sql`. Verificado con `faseP_prueba_en_seco.sql` contra producción: ataques A1–A11 bloqueados, flujos L1–L7 OK y lecturas R1–R4 sin cambios. Reversión: `faseP_revertir.sql`. No quedó registrada en `supabase_migrations` (se corrió desde el SQL Editor). |
-| 3, 7–12 | Pendiente | — |
+| 3 | 🟡 Código corregido en `dev` (sin commitear ni desplegar); restricción de la base escrita, **sin aplicar** | `/create-event`, `POST /staff/turnos` y `/staff/turnos/:id/reprogramar` validan con `validarHorarioTurno` (`utils/disponibilidad.js`): fecha válida, 30' exactos, futuro y en un slot del horario de atención (la misma generación de slots que `/available-slots`), y después `estaLibre`. Responden 400/409 con mensaje en español; una fecha inválida ya no da 500. El staff recibe la misma regla porque su panel tampoco ofrece horarios fuera de atención ni pasados. Probado contra producción sin escribir: 8 casos rechazados en cada endpoint y los 19 slots que ofrece la página pasan. Carrera de reservas simultáneas: `backend/db/faseQ_turnos_sin_solape.sql` (btree_gist + `EXCLUDE USING gist`; usa `turno_fin_efectivo()` IMMUTABLE porque `timestamptz + interval` es STABLE). Antes de proponerla se verificó en producción: 0 solapes, 0 turnos sin `fin`. El backend ya traduce la violación (23P01) a 409. |
+| 7–12 | Pendiente | — |
 
 Defensa en profundidad pendiente para el #2 (código): en `regisPacient` e `importar`, tratar una persona existente sin ficha como "del equipo" solo si tiene membresía activa en la clínica.
 
