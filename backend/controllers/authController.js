@@ -20,6 +20,13 @@ const supabaseAuth = createClient(process.env.SUPABASE_URL, process.env.SUPABASE
     auth: { persistSession: false, autoRefreshToken: false },
 });
 
+// Base pública para los links de los mails de auth (APP_URL o el host del request).
+// Se pasa explícita a Supabase: sin redirect, Supabase usa su "Site URL", que por
+// defecto es http://localhost:3000. Tiene que estar en las Redirect URLs del proyecto.
+function urlBase(req) {
+    return (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+}
+
 exports.register = async (req, res) => {
     const {
         email, password, activationCode, nombreClinica,
@@ -107,7 +114,7 @@ exports.register = async (req, res) => {
         const { data, error } = await supabaseAuth.auth.signUp({
             email,
             password,
-            options: { data: { consentimiento } },
+            options: { data: { consentimiento }, emailRedirectTo: `${urlBase(req)}/login` },
         });
         if (error) { return res.status(400).json({ error: error.message }); }
 
@@ -458,7 +465,11 @@ exports.reenviarConfirmacion = async (req, res) => {
     };
     try {
         const { email } = req.body;
-        const { error } = await supabaseAuth.auth.resend({ type: 'signup', email });
+        const { error } = await supabaseAuth.auth.resend({
+            type: 'signup',
+            email,
+            options: { emailRedirectTo: `${urlBase(req)}/login` },
+        });
         if (error) {
             // Se loguea pero no se expone al cliente (incluye el límite de envíos de Supabase).
             console.error('Error en resend de confirmación:', error.message);
@@ -575,7 +586,7 @@ exports.forgotPassword = async (req, res) => {
         const { email } = req.body;
         if (!email) return res.status(400).json({ error: 'Debe indicar un email.' });
 
-        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+        const baseUrl = urlBase(req);
         // Ruta del SPA (React). Se conserva compatibilidad con el legacy .html vía
         // un redirect en el router del frontend.
         const redirectTo = `${baseUrl}/reset-password`;
@@ -625,7 +636,7 @@ exports.cambiarContrasena = async (req, res) => {
         }
 
         // Aviso por mail (best-effort): si no fue el titular, se entera.
-        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+        const baseUrl = urlBase(req);
         sendMail({
             to: email,
             subject: 'Tu contraseña de Medilu se cambió',
