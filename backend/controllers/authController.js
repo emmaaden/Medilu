@@ -5,6 +5,7 @@ const { columnasCobertura } = require('../utils/cobertura');
 const planes = require('../utils/planes');
 const { fichasPaciente } = require('../utils/fichasPaciente');
 const { sendMail } = require('../utils/mailer');
+const { vencimientoLocal } = require('../middleware/userSupabase');
 const { layoutMail, parrafo, fuerte, boton, aviso } = require('../utils/emailLayout');
 require('dotenv').config();
 
@@ -291,7 +292,7 @@ exports.login = async (req, res) => {
             req.session.sb = {
                 accessToken: data.session.access_token,
                 refreshToken: data.session.refresh_token,
-                expiresAt: data.session.expires_at, // epoch en segundos
+                expiresAt: vencimientoLocal(data.session), // epoch en segundos, reloj local
             };
         }
         req.session.isAuthenticated = true;

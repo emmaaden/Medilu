@@ -511,8 +511,8 @@ function HorariosEditor({ idRole }: { idRole: number }) {
       } else {
         toast.error(r.error || "No se pudo guardar el horario.")
       }
-    } catch {
-      toast.error("No se pudo guardar el horario.")
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "No se pudo guardar el horario.")
     } finally {
       setSaving(false)
     }
@@ -531,8 +531,8 @@ function HorariosEditor({ idRole }: { idRole: number }) {
       } else {
         toast.error(r.error || "No se pudo eliminar.")
       }
-    } catch {
-      toast.error("No se pudo eliminar.")
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "No se pudo eliminar.")
     } finally {
       setSaving(false)
     }
