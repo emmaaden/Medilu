@@ -5,6 +5,7 @@ const { columnasCobertura } = require('../utils/cobertura');
 const planes = require('../utils/planes');
 const { fichasPaciente } = require('../utils/fichasPaciente');
 const { sendMail } = require('../utils/mailer');
+const { layoutMail, parrafo, fuerte, boton, aviso } = require('../utils/emailLayout');
 require('dotenv').config();
 
 // service_role: SALTEA la RLS. Se usa SOLO para operaciones sobre tablas.
@@ -628,7 +629,16 @@ exports.cambiarContrasena = async (req, res) => {
             to: email,
             subject: 'Tu contraseña de Medilu se cambió',
             text: `Hola,\n\nLa contraseña de tu cuenta de Medilu se cambió recién.\n\nSi no fuiste vos, restablecela ya desde ${baseUrl}/forgot-password.\n\nMedilu.`,
-            html: `<p>Hola,</p><p>La contraseña de tu cuenta de Medilu se cambió recién.</p><p>Si no fuiste vos, <a href="${baseUrl}/forgot-password">restablecela ya</a>.</p><p>Medilu.</p>`,
+            html: layoutMail({
+                titulo: 'Cambiaste tu contraseña',
+                resumen: 'La contraseña de tu cuenta de Medilu se cambió.',
+                cuerpo: [
+                    parrafo(`Hola, la contraseña de tu cuenta de Medilu (${fuerte(email)}) se cambió recién.`),
+                    parrafo('Si fuiste vos, no tenés que hacer nada.'),
+                    aviso('¿No fuiste vos?', 'Restablecé tu contraseña ahora mismo para recuperar el control de tu cuenta.'),
+                    boton(`${baseUrl}/forgot-password`, 'Restablecer contraseña'),
+                ].join('\n'),
+            }),
         }).catch((e) => console.error('No se pudo avisar el cambio de contraseña:', e.message));
 
         return res.json({ message: 'Contraseña actualizada.' });

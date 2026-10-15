@@ -18,6 +18,7 @@
 const crypto = require('crypto');
 const { supabase } = require('../config/supabaseClient');
 const { sendMail } = require('./mailer');
+const { layoutMail, parrafo, fuerte, link, boton, datos, aviso, nota, esc } = require('./emailLayout');
 
 // Sin caracteres ambiguos (0/O, 1/l/I) para que sea fácil de tipear desde el mail.
 const ALFABETO = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -26,12 +27,6 @@ function generarContrasena(longitud = 10) {
     let out = '';
     for (let i = 0; i < longitud; i++) out += ALFABETO[crypto.randomInt(ALFABETO.length)];
     return out;
-}
-
-function escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, (c) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    }[c]));
 }
 
 function baseUrl() {
@@ -63,6 +58,7 @@ async function enviarDatosAcceso({ email, nombre, clave, clinica }) {
     const misDatos = url ? `${url}/mi-perfil` : '';
     const de = clinica ? ` en ${clinica}` : '';
     const hola = nombre ? `Hola ${nombre},` : 'Hola,';
+    const pasoClave = 'Andá a "Mis datos" y, abajo del todo, en "Cambiar contraseña" elegí una nueva.';
     return enviarAlPaciente({
         to: email,
         subject: 'Tus datos de acceso a Medilu',
@@ -75,32 +71,52 @@ async function enviarDatosAcceso({ email, nombre, clave, clinica }) {
             `Contraseña temporal: ${clave}`,
             login ? `Ingresá en: ${login}` : '',
             '',
-            'Por seguridad, cambiá la contraseña después de entrar: andá a "Mis datos" y, abajo del todo, en "Cambiar contraseña" elegí una nueva.',
+            `Por seguridad, cambiá la contraseña después de entrar. ${pasoClave}`,
             misDatos ? `Mis datos: ${misDatos}` : '',
             '',
             'Si no te atendiste en este lugar, ignorá este email.',
             '',
             'Medilu.',
-        ].filter((l) => l !== null).join('\n'),
-        html: `<p>${escapeHtml(hola)}</p>
-<p>Te registraron como paciente${escapeHtml(de)}. Con esta cuenta podés ver tu historia clínica, tus estudios y tus turnos.</p>
-<p><strong>Email:</strong> ${escapeHtml(email)}<br><strong>Contraseña temporal:</strong> <code>${escapeHtml(clave)}</code></p>
-${login ? `<p><a href="${login}">Ingresá a Medilu</a></p>` : ''}
-<p>Por seguridad, cambiá la contraseña después de entrar: andá a ${misDatos ? `<a href="${misDatos}">Mis datos</a>` : '“Mis datos”'} y, abajo del todo, en <strong>“Cambiar contraseña”</strong> elegí una nueva.</p>
-<p>Si no te atendiste en este lugar, ignorá este email.</p>
-<p>Medilu.</p>`,
+        ].join('\n'),
+        html: layoutMail({
+            titulo: 'Ya tenés tu cuenta en Medilu',
+            resumen: 'Tus datos para entrar y ver tu historia clínica.',
+            cuerpo: [
+                parrafo(`${esc(hola)} te registraron como paciente${clinica ? ` en ${fuerte(clinica)}` : ''}. Con tu cuenta podés ver tu historia clínica, tus estudios y tus turnos.`),
+                datos([
+                    { etiqueta: 'Email', valor: email },
+                    { etiqueta: 'Contraseña temporal', valor: clave, mono: true },
+                ]),
+                login ? boton(login, 'Ingresar a Medilu') : '',
+                aviso(
+                    'Después de entrar, cambiá tu contraseña',
+                    `Andá a ${misDatos ? link(misDatos, 'Mis datos') : fuerte('Mis datos')} y, abajo del todo, en ${fuerte('Cambiar contraseña')} elegí una nueva.`
+                ),
+                nota(`Si no te atendiste${clinica ? ` en ${esc(clinica)}` : ' en este lugar'}, ignorá este email.`),
+            ].join('\n'),
+        }),
     });
 }
 
 async function avisarVinculacion({ email, nombre, clinica }) {
     const url = baseUrl();
+    const login = url ? `${url}/login` : '';
     const hola = nombre ? `Hola ${nombre},` : 'Hola,';
     const de = clinica || 'Un centro de salud';
     return enviarAlPaciente({
         to: email,
         subject: 'Tu historia clínica ya está en tu cuenta de Medilu',
-        text: `${hola}\n\n${de} te registró como paciente. Lo que te carguen ahí lo vas a ver en tu cuenta de Medilu, con tu email y contraseña de siempre.${url ? `\n\n${url}/login` : ''}\n\nMedilu.`,
-        html: `<p>${escapeHtml(hola)}</p><p>${escapeHtml(de)} te registró como paciente. Lo que te carguen ahí lo vas a ver en tu cuenta de Medilu, con tu email y contraseña de siempre.</p>${url ? `<p><a href="${url}/login">Ingresá a Medilu</a></p>` : ''}<p>Medilu.</p>`,
+        text: `${hola}\n\n${de} te registró como paciente. Lo que te carguen ahí lo vas a ver en tu cuenta de Medilu, con tu email y contraseña de siempre.${login ? `\n\n${login}` : ''}\n\nMedilu.`,
+        html: layoutMail({
+            titulo: 'Sumaste un nuevo lugar de atención',
+            resumen: `${de} te registró como paciente.`,
+            cuerpo: [
+                parrafo(`${esc(hola)} ${clinica ? fuerte(clinica) : 'un centro de salud'} te registró como paciente.`),
+                parrafo('Lo que te carguen ahí lo vas a ver en tu cuenta de Medilu, junto con el resto de tu historia clínica. Entrás con tu email y tu contraseña de siempre.'),
+                login ? boton(login, 'Ver mi historia clínica') : '',
+                nota('Si no te atendiste en este lugar, ignorá este email.'),
+            ].join('\n'),
+        }),
     });
 }
 
