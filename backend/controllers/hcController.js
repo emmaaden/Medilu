@@ -299,6 +299,7 @@ exports.importar = async (req, res) => {
                     const { data: nuevaPersona, error: e1 } = await supabase
                         .from('persona')
                         .insert({
+                            id_auth: null, // sin cuenta (la columna tiene DEFAULT auth.uid())
                             clinica_id: clinicaId,
                             dni,
                             nombre: p.nombre || null,

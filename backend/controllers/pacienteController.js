@@ -220,6 +220,10 @@ exports.regisPacient = async (req, res) => {
         const { data: persona, error: personaError } = await db
             .from('persona')
             .insert({
+                // Explícito: en la base, id_auth tiene DEFAULT auth.uid() y este insert corre
+                // con el JWT del profesional, así que sin esto la ficha quedaría atada a SU
+                // cuenta. La cuenta del paciente se crea/vincula después (crearCuentaPaciente).
+                id_auth: null,
                 dni,
                 nombre: fullName,
                 telefono: telefono || null,
