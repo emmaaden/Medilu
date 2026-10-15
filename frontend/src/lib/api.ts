@@ -54,6 +54,16 @@ async function request<T = unknown>(
   }
 
   if (!res.ok) {
+    // El backend cerró la sesión porque cambió el acceso a la clínica (baja o cambio
+    // de rol): se vuelve a entrar para tomar los permisos nuevos.
+    if (
+      res.status === 401 &&
+      data && typeof data === "object" &&
+      (data as Record<string, unknown>).code === "SESION_REVOCADA" &&
+      window.location.pathname !== "/login"
+    ) {
+      window.location.assign("/login")
+    }
     const msg =
       (data && typeof data === "object" &&
         ((data as Record<string, unknown>).error as string ||

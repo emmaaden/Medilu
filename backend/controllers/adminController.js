@@ -11,6 +11,7 @@
 const { supabase } = require('../config/supabaseClient');
 const { resolverObraSocial } = require('../utils/cobertura');
 const planes = require('../utils/planes');
+const { invalidarMembresias } = require('../middleware/sesionVigente');
 
 // GET /admin/miembros — profesionales/recepción/auditores/admins de la clínica activa.
 exports.listarMiembros = async (req, res) => {
@@ -147,7 +148,7 @@ exports.actualizarMiembro = async (req, res) => {
         // La membresía debe pertenecer a la clínica activa.
         const { data: target, error: tErr } = await supabase
             .from('membresia')
-            .select('id, rol, activo, clinica_id')
+            .select('id, id_persona, rol, activo, clinica_id')
             .eq('id', membresiaId)
             .eq('clinica_id', clinicaId)
             .maybeSingle();
@@ -225,6 +226,8 @@ exports.actualizarMiembro = async (req, res) => {
             .select('id, rol, activo, alcance_obra_social, alcance_id_obra_social')
             .single();
         if (uErr) return res.status(400).json({ error: uErr.message });
+        // La sesión de esa persona toma el cambio en su próxima request (#7).
+        invalidarMembresias(target.id_persona);
 
         return res.json({ message: 'Miembro actualizado', miembro: updated });
     } catch (err) {

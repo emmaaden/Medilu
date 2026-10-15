@@ -6,6 +6,7 @@ const planes = require('../utils/planes');
 const { fichasPaciente } = require('../utils/fichasPaciente');
 const { sendMail } = require('../utils/mailer');
 const { vencimientoLocal } = require('../middleware/userSupabase');
+const { cerrarOtrasSesiones, regenerarSesion } = require('../utils/sesiones');
 const { layoutMail, parrafo, fuerte, boton, aviso } = require('../utils/emailLayout');
 require('dotenv').config();
 
@@ -293,6 +294,10 @@ exports.login = async (req, res) => {
         }
 
         const userId = data.user.id;
+
+        // Sesión nueva (otro id de cookie) para que un id plantado antes del login no
+        // quede autenticado (session fixation; auditoría 2026-10-15, #7).
+        await regenerarSesion(req);
 
         // 2. Guardar los tokens de Supabase (Fase 2c: operar por-JWT bajo RLS).
         if (data.session) {
@@ -633,6 +638,14 @@ exports.cambiarContrasena = async (req, res) => {
                 return res.status(400).json({ error: 'Elegí una contraseña más segura (y distinta de la anterior).' });
             }
             throw error;
+        }
+
+        // Las demás sesiones abiertas de la cuenta se cierran: quien tuviera una
+        // (p. ej. en otra compu) tiene que volver a entrar con la contraseña nueva.
+        try {
+            await cerrarOtrasSesiones(req, userId);
+        } catch (e) {
+            console.error('No se pudieron cerrar las otras sesiones:', e.message);
         }
 
         // Aviso por mail (best-effort): si no fue el titular, se entera.

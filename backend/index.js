@@ -45,6 +45,7 @@ const { validate } = require('./middleware/validate');
 const schemas = require('./validators/schemas');
 const planes = require('./utils/planes');
 const { soloLectura } = require('./middleware/plan');
+const { sesionVigente } = require('./middleware/sesionVigente');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -177,6 +178,10 @@ app.use(session({
         sameSite: 'lax'
     }
 }));
+
+// Auditoría 2026-10-15 (#7): la sesión del staff se revalida contra sus membresías
+// (baja o cambio de rol se aplican sin esperar a que venza la cookie).
+app.use(sesionVigente);
 
 // ---------------------------------------------------------------------------
 // Estáticos y rutas
