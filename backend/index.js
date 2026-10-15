@@ -36,6 +36,7 @@ const { getMembresiasActivas } = require('./utils/membresias');
 const { fichasPaciente } = require('./utils/fichasPaciente'); // Fase O
 const { generarTokenGestion } = require('./utils/turnoToken');
 const { sendMail, isMailerConfigured } = require('./utils/mailer');
+const { mailTurno } = require('./utils/mailTurno');
 const { slotsDisponibles, estaLibre } = require('./utils/disponibilidad');
 const { turnosOnlineApagados } = require('./utils/turnosOnline'); // Fase N2
 const { validate } = require('./middleware/validate');
@@ -324,16 +325,6 @@ app.get('/api/user', async (req, res) => {
 // no contra Google Calendar. La lógica de slots/solapamiento vive en ese módulo.
 // ---------------------------------------------------------------------------
 
-// Escapa texto para interpolarlo de forma segura dentro de HTML (emails).
-function escapeHtml(s) {
-    return String(s || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
 // Normaliza un nombre de día (minúsculas, sin acentos) para comparar.
 function normalizarDia(s) {
     return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -379,7 +370,7 @@ app.get('/available-slots', validate(schemas.calendar.availableSlots, 'query'), 
 // horario ya está reservado o bloqueado, se rechaza. Si la reserva viene de la página
 // de una clínica (?clinica=<slug>), el profesional debe pertenecer a ella (Fase 2).
 app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEvent), async (req, res) => {
-    const { summary, start, end, email, number, numberCode, profId, clinica, name } = req.body;
+    const { start, end, email, number, numberCode, profId, clinica, name } = req.body;
 
     // Consentimiento expreso del invitado (Ley 25.326): el turno revela datos de salud
     // (especialidad/profesional) y se aloja en servidores fuera del país. El paciente
@@ -482,24 +473,19 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
         if (insError) throw insError;
 
         // 5. Email de confirmación (best-effort: no bloquea la reserva).
-        const fechaLocal = new Date(start.dateTime).toLocaleString('es-AR', {
-            timeZone: 'America/Argentina/Buenos_Aires',
-            dateStyle: 'full',
-            timeStyle: 'short',
-        });
-        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
         // Enlace de gestión: los invitados reciben su token; los logueados van a "Mis turnos".
-        const gestionHtml = manageToken
-            ? `<p>Para ver o cancelar este turno, entrá a <a href="${baseUrl}/gestionar-turno?token=${manageToken}">este enlace</a>. Guardalo: es personal.</p>`
-            : `<p>Podés ver o cancelar tus turnos desde <a href="${baseUrl}/mis-turnos">Mis turnos</a>.</p>`;
-        const gestionText = manageToken
-            ? `Para ver o cancelar este turno: ${baseUrl}/gestionar-turno?token=${manageToken}`
-            : `Ver o cancelar tus turnos: ${baseUrl}/mis-turnos`;
         sendMail({
             to: email,
-            subject: 'Confirmación de tu turno - Medilu',
-            text: `Hola,\n\nTu turno fue agendado para el ${fechaLocal} hs.\n${summary || ''}\n\n${gestionText}\n\nGracias por usar Medilu.`,
-            html: `<p>Hola,</p><p>Tu turno fue <strong>agendado</strong> para el <strong>${fechaLocal} hs</strong>.</p><p>${escapeHtml(summary)}</p>${gestionHtml}<p>Gracias por usar Medilu.</p>`,
+            ...mailTurno({
+                tipo: 'confirmacion',
+                nombre: name,
+                inicio: start.dateTime,
+                profesional: profNombre,
+                especialidad,
+                baseUrl: process.env.APP_URL || `${req.protocol}://${req.get('host')}`,
+                manageToken,
+                misTurnos: 'boton',
+            }),
         }).catch(err => console.error('Error enviando email de confirmación:', err.message));
 
         res.json({ success: true });
@@ -535,7 +521,7 @@ async function sendUpcomingReminders() {
 
     const { data: turnos, error } = await supabase
         .from('turno')
-        .select('id, inicio, paciente_email, paciente_nombre, profesional_nombre, especialidad')
+        .select('id, inicio, id_paciente, paciente_email, paciente_nombre, profesional_nombre, especialidad')
         .eq('estado', 'reservado')
         .eq('recordatorio_enviado', false)
         .gte('inicio', desde.toISOString())
@@ -546,20 +532,18 @@ async function sendUpcomingReminders() {
     for (const t of turnos || []) {
         if (!t.paciente_email) continue;
 
-        const fechaLocal = new Date(t.inicio).toLocaleString('es-AR', {
-            timeZone: 'America/Argentina/Buenos_Aires',
-            dateStyle: 'full',
-            timeStyle: 'short',
-        });
-        const con = t.profesional_nombre ? ` con ${t.profesional_nombre}` : '';
-        const esp = t.especialidad ? ` (${t.especialidad})` : '';
-
         try {
             await sendMail({
                 to: t.paciente_email,
-                subject: 'Recordatorio de tu turno - Medilu',
-                text: `Hola,\n\nTe recordamos tu turno${con}${esp} para el ${fechaLocal} hs.\n\nMedilu.`,
-                html: `<p>Hola,</p><p>Te recordamos tu turno${con}${esp} para el <strong>${fechaLocal} hs</strong>.</p><p>Medilu.</p>`,
+                ...mailTurno({
+                    tipo: 'recordatorio',
+                    nombre: t.paciente_nombre,
+                    inicio: t.inicio,
+                    profesional: t.profesional_nombre,
+                    especialidad: t.especialidad,
+                    baseUrl: process.env.APP_URL,
+                    misTurnos: t.id_paciente ? 'link' : null,
+                }),
             });
             await supabase.from('turno').update({ recordatorio_enviado: true }).eq('id', t.id);
             sent++;

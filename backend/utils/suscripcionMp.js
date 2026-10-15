@@ -390,6 +390,7 @@ async function emailsAdmins(clinicaId) {
 // avisa ni se aplica nada (queda pendiente y se ve en el panel de plataforma).
 async function enviarAvisosPrecio() {
     const { isMailerConfigured, sendMail } = require('./mailer');
+    const { layoutMail, parrafo, fuerte, datos, aviso } = require('./emailLayout');
     const { data: pendientes, error } = await supabase.from('suscripcion')
         .select('clinica_id, plan_id, ciclo, monto, monto_nuevo, monto_nuevo_desde, clinica:clinica_id ( nombre )')
         .not('monto_nuevo', 'is', null).is('aviso_precio_enviado_en', null);
@@ -414,8 +415,21 @@ async function enviarAvisosPrecio() {
             to: destinos.join(','),
             subject: `Cambio de precio de tu plan desde el ${fechaLarga(desde)} - Medilu`,
             text: texto,
-            // El nombre de la clínica lo carga el usuario: se escapa en el HTML.
-            html: texto.split('\n\n').map((p) => `<p>${p.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`).join(''),
+            // El nombre de la clínica lo carga el usuario: los bloques lo escapan en el HTML.
+            html: layoutMail({
+                titulo: 'Cambia el precio de tu plan',
+                resumen: `Desde el ${fechaLarga(desde)} el plan pasa a ${formatoPesos(Number(s.monto_nuevo))} por ${periodo}.`,
+                cuerpo: [
+                    parrafo(`Hola, te avisamos que cambia el precio del plan${plan ? ` ${fuerte(plan.nombre)}` : ''} de ${fuerte(clinica)}.`),
+                    datos([
+                        { etiqueta: 'Precio actual', valor: `${formatoPesos(Number(s.monto))} por ${periodo}` },
+                        { etiqueta: 'Precio nuevo', valor: `${formatoPesos(Number(s.monto_nuevo))} por ${periodo}` },
+                        { etiqueta: 'Desde', valor: fechaLarga(desde) },
+                    ]),
+                    parrafo('Hasta esa fecha se te sigue cobrando el precio actual.'),
+                    aviso('¿No estás de acuerdo?', `Podés dar de baja la renovación antes, sin costo, desde el panel: ${fuerte('Plan')} → ${fuerte('Dar de baja la renovación')}.`),
+                ].join('\n'),
+            }),
         });
         if (!ok) continue;
         const { error: uErr } = await supabase.from('suscripcion').update({

@@ -5,6 +5,7 @@
 
 const crypto = require('crypto');
 const { sendMail } = require('../utils/mailer');
+const { layoutMail, parrafo, fuerte, datos, aviso, nota, esc } = require('../utils/emailLayout');
 const { supabase } = require('../config/supabaseClient');
 const suscripcionMp = require('../utils/suscripcionMp');
 
@@ -93,16 +94,18 @@ exports.solicitudConsumo = async (req, res) => {
         `Detalle: ${detalle || '—'}`,
         ...(baja ? [`Clínica: ${baja.clinica.nombre || '—'} (${baja.clinica.id})`, `Estado de la baja: ${estadoBaja}`] : []),
     ].join('\n');
-    const resumenHtml = `<ul>
-        <li><strong>Código:</strong> ${codigo}</li>
-        <li><strong>Fecha:</strong> ${escapeHtml(fecha)} hs</li>
-        <li><strong>Nombre:</strong> ${escapeHtml(nombre)}</li>
-        <li><strong>Email:</strong> ${escapeHtml(email)}</li>
-        <li><strong>Servicio/plan:</strong> ${escapeHtml(servicio || '—')}</li>
-        <li><strong>Detalle:</strong> ${escapeHtml(detalle || '—')}</li>
-        ${baja ? `<li><strong>Clínica:</strong> ${escapeHtml(baja.clinica.nombre || '—')}</li>
-        <li><strong>Estado de la baja:</strong> ${escapeHtml(estadoBaja)}</li>` : ''}
-    </ul>`;
+    const resumenFilas = [
+        { etiqueta: 'Código', valor: codigo, mono: true },
+        { etiqueta: 'Fecha', valor: `${fecha} hs` },
+        { etiqueta: 'Nombre', valor: nombre },
+        { etiqueta: 'Email', valor: email },
+        { etiqueta: 'Servicio/plan', valor: servicio || '—' },
+        { etiqueta: 'Detalle', valor: detalle || '—' },
+        ...(baja ? [
+            { etiqueta: 'Clínica', valor: baja.clinica.nombre || '—' },
+            { etiqueta: 'Estado de la baja', valor: estadoBaja },
+        ] : []),
+    ];
 
     const destinoTitular = process.env.LEGAL_NOTIFY_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_USER;
     let notificado = false;
@@ -112,7 +115,15 @@ exports.solicitudConsumo = async (req, res) => {
                 to: destinoTitular,
                 subject: `[${codigo}] ${titulo}`,
                 text: `${resumenTxt}\n\nPlazo: responder y efectivizar sin demoras (Disp. 954/2025).`,
-                html: `<p>Nueva ${titulo.toLowerCase()} recibida desde el sitio.</p>${resumenHtml}`,
+                html: layoutMail({
+                    titulo,
+                    resumen: `${codigo} · ${nombre}`,
+                    cuerpo: [
+                        parrafo(`Nueva ${esc(titulo.toLowerCase())} recibida desde el sitio.`),
+                        datos(resumenFilas),
+                        aviso('Plazo', 'Responder y efectivizar sin demoras (Disp. 954/2025).'),
+                    ].join('\n'),
+                }),
             });
         }
         if (notificado) {
@@ -120,7 +131,15 @@ exports.solicitudConsumo = async (req, res) => {
                 to: email,
                 subject: `Recibimos tu solicitud (${codigo}) - Medilu`,
                 text: `Hola ${nombre},\n\nRecibimos tu ${titulo.toLowerCase()}.\nTu código de identificación es ${codigo}. Guardalo para cualquier consulta.\n\n${resumenTxt}\n\nMedilu`,
-                html: `<p>Hola ${escapeHtml(nombre)},</p><p>Recibimos tu ${titulo.toLowerCase()}. Tu código de identificación es <strong>${codigo}</strong>. Guardalo para cualquier consulta.</p>${resumenHtml}<p>Medilu</p>`,
+                html: layoutMail({
+                    titulo: 'Recibimos tu solicitud',
+                    resumen: `Tu código de identificación es ${codigo}.`,
+                    cuerpo: [
+                        parrafo(`Hola ${esc(nombre)}, recibimos tu ${esc(titulo.toLowerCase())}. Tu código de identificación es ${fuerte(codigo)}.`),
+                        datos(resumenFilas),
+                        nota('Guardá este código: te lo vamos a pedir para cualquier consulta sobre tu solicitud.'),
+                    ].join('\n'),
+                }),
             });
         }
     } catch (err) {
