@@ -48,13 +48,22 @@ async function nombreClinica(clinicaId) {
     return (data && data.nombre) || '';
 }
 
+// Mails al paciente. Con MAIL_PRUEBA en el entorno (para probar sin escribirle a
+// pacientes reales) se mandan a esa casilla, con el destinatario real en el asunto.
+// La cuenta se crea igual con el email del paciente: es con el que inicia sesión.
+function enviarAlPaciente(mail) {
+    const prueba = (process.env.MAIL_PRUEBA || '').trim();
+    if (!prueba) return sendMail(mail);
+    return sendMail({ ...mail, to: prueba, subject: `[PRUEBA para ${mail.to}] ${mail.subject}` });
+}
+
 async function enviarDatosAcceso({ email, nombre, clave, clinica }) {
     const url = baseUrl();
     const login = url ? `${url}/login` : '';
     const misDatos = url ? `${url}/mi-perfil` : '';
     const de = clinica ? ` en ${clinica}` : '';
     const hola = nombre ? `Hola ${nombre},` : 'Hola,';
-    return sendMail({
+    return enviarAlPaciente({
         to: email,
         subject: 'Tus datos de acceso a Medilu',
         text: [
@@ -87,7 +96,7 @@ async function avisarVinculacion({ email, nombre, clinica }) {
     const url = baseUrl();
     const hola = nombre ? `Hola ${nombre},` : 'Hola,';
     const de = clinica || 'Un centro de salud';
-    return sendMail({
+    return enviarAlPaciente({
         to: email,
         subject: 'Tu historia clínica ya está en tu cuenta de Medilu',
         text: `${hola}\n\n${de} te registró como paciente. Lo que te carguen ahí lo vas a ver en tu cuenta de Medilu, con tu email y contraseña de siempre.${url ? `\n\n${url}/login` : ''}\n\nMedilu.`,
