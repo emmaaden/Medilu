@@ -37,6 +37,8 @@ export type Paciente = {
   idObraSocial?: number | null
   nroAfiliado?: string
   plan?: string
+  /** Si ya tiene cuenta para entrar a Medilu (si no, se le puede enviar el acceso). */
+  tieneCuenta?: boolean
   sexo: string
   fechaApertura: string
   history: HistoryEntry[]

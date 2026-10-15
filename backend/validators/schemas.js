@@ -189,6 +189,10 @@ module.exports = {
         getData: z.object({
             dni,
         }),
+        enviarAcceso: z.object({
+            dni,
+            email: emailOpcional,
+        }),
     },
 
     miCuenta: {

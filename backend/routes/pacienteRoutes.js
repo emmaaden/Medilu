@@ -12,6 +12,9 @@ router.use(requireRole('profesional'));
 router.post('/regis-pacient', validate(schemas.pacient.regis), pacienteController.regisPacient);
 router.post('/save-data-pacient', validate(schemas.pacient.saveData), pacienteController.saveDataPacient);
 router.post('/get-data-pacient', validate(schemas.pacient.getData), pacienteController.getDataPacient);
+// Alta: ¿el DNI ya es paciente de la clínica? / cuenta de acceso del paciente.
+router.post('/existe-pacient', validate(schemas.pacient.getData), pacienteController.existePaciente);
+router.post('/enviar-acceso', validate(schemas.pacient.enviarAcceso), pacienteController.enviarAcceso);
 // Ficha para la obra social: datos del profesional que la emite.
 router.get('/emisor', pacienteController.getEmisor);
 // Fase K: cobertura del paciente (obra social del catálogo + afiliado + plan).

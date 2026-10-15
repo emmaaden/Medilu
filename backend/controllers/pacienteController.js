@@ -17,6 +17,8 @@ const { getUserSupabase } = require('../middleware/userSupabase');
 const { filasParaRegistro, serializarDiente } = require('../utils/odontograma');
 const { registrarAcceso } = require('../utils/bitacora');
 const { columnasCobertura } = require('../utils/cobertura');
+const { supabase } = require('../config/supabaseClient');
+const { crearCuentaPaciente, buscarAutoregistrado, avisarVinculacion, nombreClinica } = require('../utils/cuentaPaciente');
 const {
     prepararCodificacion,
     insertarCodificacion,
@@ -189,7 +191,24 @@ exports.regisPacient = async (req, res) => {
             .eq('clinica_id', prof.clinicaId)
             .maybeSingle();
         if (existente) {
-            return res.status(409).json({ error: 'Ya existe un paciente con ese DNI en tu clínica.' });
+            return res.status(409).json({
+                error: 'Ya existe un paciente con ese DNI en tu clínica.',
+                code: 'PACIENTE_EXISTENTE',
+            });
+        }
+
+        // ¿El paciente ya se había registrado solo en Medilu (sin clínica)? Si el email
+        // coincide con el de su cuenta, se suma a la clínica en vez de duplicarlo: así
+        // ve en su cuenta lo que le cargan. DNI + email es lo que prueba que es él.
+        const auto = email ? await buscarAutoregistrado(dni, email) : null;
+        if (auto && !auto.coincide) {
+            return res.status(409).json({
+                error: 'Este DNI ya tiene una cuenta de paciente en Medilu con otro email. Pedile al paciente el email con el que se registró.',
+                code: 'DNI_CON_CUENTA',
+            });
+        }
+        if (auto && auto.coincide) {
+            return await sumarAutoregistrado(req, res, db, prof, cob, cod, auto.persona);
         }
 
         // 1. persona (asignada a la clínica del profesional)
@@ -231,10 +250,162 @@ exports.regisPacient = async (req, res) => {
             paciente: { nombre: fullName, dni },
         });
 
-        return res.status(201).json({ message: 'Paciente registrado con éxito', id_paciente: paciente.id });
+        // 4. Cuenta de acceso + email con los datos (no rompe el alta si falla).
+        const cuenta = await crearCuentaPaciente({
+            personaId: persona.id, email, nombre: fullName, clinicaId: prof.clinicaId,
+        });
+
+        return res.status(201).json({ message: 'Paciente registrado con éxito', id_paciente: paciente.id, cuenta });
     } catch (err) {
         console.error('Error en regis-pacient:', err);
         return res.status(500).json({ error: err.message || 'Error al registrar el paciente.' });
+    }
+};
+
+// Suma a la clínica a un paciente que ya tenía cuenta propia (se registró solo):
+// se le asigna la clínica, se completan los datos que le faltaban (sin pisar los
+// suyos) y se carga la primera consulta. Usa service_role porque la persona todavía
+// no es de la clínica y la RLS no la deja ver.
+async function sumarAutoregistrado(req, res, db, prof, cob, cod, persona) {
+    const { telefono, email, sexo, direccion, fechaNacimiento, obraSocial } = req.body;
+    const nuevos = {
+        telefono: telefono || null,
+        direccion: direccion || null,
+        sexo: sexo || null,
+        fecha_nacimiento: parseFechaNacimiento(fechaNacimiento),
+        email: String(email).trim().toLowerCase(),
+    };
+    const update = { clinica_id: prof.clinicaId };
+    for (const [k, v] of Object.entries(nuevos)) if (v && !persona[k]) update[k] = v;
+
+    const { data: upd, error: updErr } = await supabase
+        .from('persona')
+        .update(update)
+        .eq('id', persona.id)
+        .is('clinica_id', null)
+        .select('id');
+    if (updErr) throw updErr;
+    if (!upd || upd.length === 0) {
+        return res.status(409).json({ error: 'El paciente cambió mientras lo cargabas. Probá de nuevo.' });
+    }
+
+    // La cobertura que cargó el profesional solo se usa si el paciente no tenía una.
+    const paciente = persona.paciente[0];
+    if (!paciente.id_obra_social) {
+        const cols = { ...cob.cols };
+        if (cols.id_obra_social === undefined && obraSocial) cols.obra_social = obraSocial;
+        if (Object.keys(cols).length) {
+            const { error } = await supabase.from('paciente').update(cols).eq('id', paciente.id);
+            if (error) throw error;
+        }
+    }
+
+    const idRegistro = await insertRegistro(db, paciente.id, prof, req.body, cod);
+    const nombre = [persona.nombre, persona.apellido].filter(Boolean).join(' ');
+
+    await registrarAcceso(req, {
+        accion: 'registrar_paciente',
+        idPaciente: paciente.id,
+        idRegistro,
+        paciente: { nombre, dni: req.body.dni },
+        detalle: { vinculado: true },
+    });
+
+    let mailEnviado = false;
+    try {
+        mailEnviado = await avisarVinculacion({
+            email: nuevos.email, nombre: persona.nombre, clinica: await nombreClinica(prof.clinicaId),
+        });
+    } catch (e) {
+        console.error('No se pudo avisar la vinculación al paciente:', e.message);
+    }
+
+    return res.status(201).json({
+        message: 'Paciente registrado con éxito',
+        id_paciente: paciente.id,
+        cuenta: { estado: 'vinculada', mailEnviado },
+    });
+}
+
+// ---------------------------------------------------------------------------
+// ¿Existe ya un paciente con ese DNI en la clínica? Lo usa el alta para ofrecer
+// cargar sus datos en vez de duplicarlo. Devuelve solo el nombre (la ficha completa
+// se pide después con get-data-pacient, que queda en la bitácora).
+// ---------------------------------------------------------------------------
+exports.existePaciente = async (req, res) => {
+    try {
+        const { dni } = req.body;
+        const clinicaId = req.session.user.clinicaId;
+        if (!clinicaId) return res.status(400).json({ error: 'Tu usuario no tiene una clínica asignada.' });
+
+        const db = await getUserSupabase(req);
+        if (!db) return res.status(ERR_SESION.status).json(ERR_SESION.body);
+
+        const { data: persona, error } = await db
+            .from('persona')
+            .select('nombre, apellido, paciente(id)')
+            .eq('dni', dni)
+            .eq('clinica_id', clinicaId)
+            .maybeSingle();
+        if (error) throw error;
+
+        const paciente = persona && persona.paciente && persona.paciente[0];
+        if (!paciente) return res.json({ existe: false });
+        return res.json({ existe: true, fullName: [persona.nombre, persona.apellido].filter(Boolean).join(' ') });
+    } catch (err) {
+        console.error('Error en existe-pacient:', err);
+        return res.status(500).json({ error: 'No se pudo verificar el DNI.' });
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Enviar los datos de acceso a un paciente de la clínica que todavía no tiene cuenta
+// (cargado antes de que existiera esto, o si el mail no salió / el email estaba
+// mal). Si viene `email`, se corrige en la ficha antes de crear la cuenta.
+// ---------------------------------------------------------------------------
+exports.enviarAcceso = async (req, res) => {
+    try {
+        const { dni } = req.body;
+        const email = req.body.email ? String(req.body.email).trim().toLowerCase() : '';
+        const clinicaId = req.session.user.clinicaId;
+        if (!clinicaId) return res.status(400).json({ error: 'Tu usuario no tiene una clínica asignada.' });
+
+        const db = await getUserSupabase(req);
+        if (!db) return res.status(ERR_SESION.status).json(ERR_SESION.body);
+
+        const { data: persona, error } = await db
+            .from('persona')
+            .select('id, id_auth, nombre, apellido, email, paciente(id)')
+            .eq('dni', dni)
+            .eq('clinica_id', clinicaId)
+            .maybeSingle();
+        if (error) throw error;
+        if (!persona || !persona.paciente || !persona.paciente[0]) {
+            return res.status(404).json({ error: 'Paciente no encontrado.' });
+        }
+        if (persona.id_auth) {
+            return res.status(409).json({
+                error: 'El paciente ya tiene cuenta. Si no recuerda la contraseña, puede recuperarla desde "¿Olvidaste tu contraseña?".',
+            });
+        }
+
+        const destino = email || persona.email;
+        if (!destino) return res.status(400).json({ error: 'Cargá el email del paciente.' });
+        if (email && email !== persona.email) {
+            const { error: updErr } = await db.from('persona').update({ email }).eq('id', persona.id);
+            if (updErr) throw updErr;
+        }
+
+        const cuenta = await crearCuentaPaciente({
+            personaId: persona.id,
+            email: destino,
+            nombre: [persona.nombre, persona.apellido].filter(Boolean).join(' '),
+            clinicaId,
+        });
+        return res.json({ cuenta });
+    } catch (err) {
+        console.error('Error en enviar-acceso:', err);
+        return res.status(500).json({ error: 'No se pudo enviar el acceso.' });
     }
 };
 
@@ -307,7 +478,7 @@ exports.getDataPacient = async (req, res) => {
 
         const { data: persona, error: personaError } = await db
             .from('persona')
-            .select('nombre, apellido, dni, telefono, direccion, sexo, fecha_nacimiento, email, paciente(id, obra_social, id_obra_social, nro_afiliado, plan)')
+            .select('nombre, apellido, dni, telefono, direccion, sexo, fecha_nacimiento, email, id_auth, paciente(id, obra_social, id_obra_social, nro_afiliado, plan)')
             .eq('dni', dni)
             .eq('clinica_id', clinicaId)
             .maybeSingle();
@@ -363,6 +534,7 @@ exports.getDataPacient = async (req, res) => {
             idObraSocial: paciente.id_obra_social || null,
             nroAfiliado: paciente.nro_afiliado || '',
             plan: paciente.plan || '',
+            tieneCuenta: !!persona.id_auth,
             fechaApertura,
             history,
         });
