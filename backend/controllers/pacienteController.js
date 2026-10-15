@@ -546,7 +546,7 @@ exports.getDataPacient = async (req, res) => {
 
         const { data: registros, error: regError } = await db
             .from('registro_clinico')
-            .select(`id, id_profesional, profesional_nombre, area, fecha, sintomas, diagnostico, tratamiento, auditoria_estado,
+            .select(`id, id_profesional, profesional_nombre, area, fecha, sintomas, diagnostico, tratamiento, auditoria_estado, origen,
                 registro_diente(numero, condicion, cara, estado, notas), ${SELECT_CODIFICACION}`)
             .eq('id_paciente', paciente.id)
             .order('fecha', { ascending: true });
@@ -559,6 +559,8 @@ exports.getDataPacient = async (req, res) => {
             // Crudos para filtrar por período / profesional (ficha para la obra social).
             fechaIso: r.fecha,
             idProfesional: r.id_profesional || null,
+            // Vino de otro sistema (import de HC): fecha y profesional son los del archivo.
+            importado: !!r.origen,
             sintomas: r.sintomas || '',
             diagnostico: r.diagnostico || '',
             tratamiento: r.tratamiento || '',

@@ -24,6 +24,8 @@ export type HistoryEntry = {
   dientes?: Diente[]
   /** Fase K: estado de auditoría del registro (solo en la ficha del profesional). */
   auditoria?: string
+  /** Vino de otro sistema (import de HC): fecha y profesional son los del archivo. */
+  importado?: boolean
 } & CodificacionRegistro
 
 export type Paciente = {
@@ -148,6 +150,7 @@ export function downloadPatientHistoryPdf(p: Paciente) {
   ;(p.history || []).forEach((entry) => {
     if (entry.clinica) line(`Clínica: ${entry.clinica}`)
     line(`Profesional: ${entry.profesional}`)
+    if (entry.importado) line("Registro importado de otro sistema")
     line(`Área: ${entry.area}`)
     line(`Fecha: ${entry.fecha}hs`)
     line("")

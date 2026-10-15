@@ -131,7 +131,11 @@ app.use(cors((req, cb) => {
     return cb(null, { origin: false }); // origen no permitido: el navegador lo bloquea
 }));
 
-app.use(express.json());
+// JSON con el límite por defecto (100 KB), salvo el import de HC, que trae su propio
+// parser de 20 MB (routes/hcRoutes.js): si este lo leía primero, todo archivo de más
+// de 100 KB daba 413 antes de llegar a la ruta.
+const jsonParser = express.json();
+app.use((req, res, next) => (req.path === '/hc/import' ? next() : jsonParser(req, res, next)));
 app.use(express.urlencoded({ extended: true }));
 
 // Rate limiting general. El limiter estricto de login/register vive en routes/authRoutes.js.

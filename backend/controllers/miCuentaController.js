@@ -78,7 +78,7 @@ async function registrosDeFichas(fichas) {
     const clinicaDe = new Map(fichas.map((f) => [f.paciente.id, f.clinica]));
     const { data, error } = await supabase
         .from('registro_clinico')
-        .select(`id, id_paciente, fecha, profesional_nombre, area, sintomas, diagnostico, tratamiento,
+        .select(`id, id_paciente, fecha, profesional_nombre, area, sintomas, diagnostico, tratamiento, origen,
             clinica(nombre), registro_diente(numero, condicion, cara, estado, notas), ${SELECT_CODIFICACION}`)
         .in('id_paciente', fichas.map((f) => f.paciente.id))
         .order('fecha', { ascending: true });
@@ -209,6 +209,7 @@ exports.exportHistoria = async (req, res) => {
                     origenId: r.id,
                     fecha: r.fecha,
                     clinica: r.clinicaNombre, // Fase O: de qué clínica es cada registro
+                    importado: !!r.origen,
                     profesional: r.profesional_nombre || null,
                     area: r.area || null,
                     sintomas: r.sintomas || null,
@@ -246,6 +247,7 @@ exports.getHistoria = async (req, res) => {
             profesional: r.profesional_nombre || '',
             area: r.area || '',
             fecha: fmtFechaHora(r.fecha),
+            importado: !!r.origen, // de otro sistema (import de HC)
             sintomas: r.sintomas || '',
             diagnostico: r.diagnostico || '',
             tratamiento: r.tratamiento || '',

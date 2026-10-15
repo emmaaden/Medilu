@@ -970,6 +970,15 @@ function BuscarPaciente({
                   <span>
                     <span className="font-medium text-muted-foreground">Profesional: </span>
                     {e.profesional}
+                    {e.importado && (
+                      <Badge
+                        variant="outline"
+                        className="ml-2 font-normal"
+                        title="Vino de otro sistema: la fecha y el profesional son los del archivo importado."
+                      >
+                        Importado
+                      </Badge>
+                    )}
                   </span>
                   <span>
                     <span className="font-medium text-muted-foreground">Área: </span>
