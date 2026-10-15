@@ -65,7 +65,7 @@ async function enviarDatosAcceso({ email, nombre, clave, clinica }) {
             `Contraseña temporal: ${clave}`,
             login ? `Ingresá en: ${login}` : '',
             '',
-            'Por seguridad, cambiá la contraseña después de entrar (desde "¿Olvidaste tu contraseña?" en el inicio de sesión podés elegir una nueva).',
+            'Por seguridad, cambiá la contraseña después de entrar, desde "Mis datos".',
             'Si no te atendiste en este lugar, ignorá este email.',
             '',
             'Medilu.',
@@ -74,7 +74,7 @@ async function enviarDatosAcceso({ email, nombre, clave, clinica }) {
 <p>Te registraron como paciente${escapeHtml(de)}. Con esta cuenta podés ver tu historia clínica, tus estudios y tus turnos.</p>
 <p><strong>Email:</strong> ${escapeHtml(email)}<br><strong>Contraseña temporal:</strong> <code>${escapeHtml(clave)}</code></p>
 ${login ? `<p><a href="${login}">Ingresá a Medilu</a></p>` : ''}
-<p>Por seguridad, cambiá la contraseña después de entrar (desde “¿Olvidaste tu contraseña?” en el inicio de sesión podés elegir una nueva).</p>
+<p>Por seguridad, cambiá la contraseña después de entrar, desde “Mis datos”.</p>
 <p>Si no te atendiste en este lugar, ignorá este email.</p>
 <p>Medilu.</p>`,
     });

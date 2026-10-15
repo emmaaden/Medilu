@@ -4,6 +4,7 @@ const { getMembresiasActivas, roleSinProfesional } = require('../utils/membresia
 const { columnasCobertura } = require('../utils/cobertura');
 const planes = require('../utils/planes');
 const { fichasPaciente } = require('../utils/fichasPaciente');
+const { sendMail } = require('../utils/mailer');
 require('dotenv').config();
 
 // service_role: SALTEA la RLS. Se usa SOLO para operaciones sobre tablas.
@@ -587,6 +588,53 @@ exports.forgotPassword = async (req, res) => {
     } catch (err) {
         console.error('Error en forgot-password:', err);
         return res.json(respuestaGenerica);
+    }
+};
+
+// Cambiar la contraseña estando logueado (cualquier rol). Pide la actual: si alguien
+// agarra una sesión abierta no puede cambiarla sin saberla. El usuario se toma de la
+// sesión, nunca del body. La sesión actual sigue válida.
+exports.cambiarContrasena = async (req, res) => {
+    try {
+        const { actual, nueva } = req.body;
+        const userId = req.session.user.id;
+        if (actual === nueva) {
+            return res.status(400).json({ error: 'La contraseña nueva tiene que ser distinta de la actual.' });
+        }
+
+        const { data: u, error: uErr } = await supabase.auth.admin.getUserById(userId);
+        const email = u && u.user && u.user.email;
+        if (uErr || !email) return res.status(400).json({ error: 'No encontramos tu cuenta.' });
+
+        // Verificar la contraseña actual (cliente anon, sin adjuntar la sesión al service_role).
+        const { data: check, error: checkErr } = await supabaseAuth.auth.signInWithPassword({ email, password: actual });
+        if (checkErr) return res.status(400).json({ error: 'La contraseña actual no es correcta.' });
+        // Esa verificación abrió una sesión de Supabase que no se usa: se cierra.
+        if (check && check.session) {
+            supabase.auth.admin.signOut(check.session.access_token, 'local').catch(() => {});
+        }
+
+        const { error } = await supabase.auth.admin.updateUserById(userId, { password: nueva });
+        if (error) {
+            if (error.code === 'weak_password' || error.code === 'same_password') {
+                return res.status(400).json({ error: 'Elegí una contraseña más segura (y distinta de la anterior).' });
+            }
+            throw error;
+        }
+
+        // Aviso por mail (best-effort): si no fue el titular, se entera.
+        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+        sendMail({
+            to: email,
+            subject: 'Tu contraseña de Medilu se cambió',
+            text: `Hola,\n\nLa contraseña de tu cuenta de Medilu se cambió recién.\n\nSi no fuiste vos, restablecela ya desde ${baseUrl}/forgot-password.\n\nMedilu.`,
+            html: `<p>Hola,</p><p>La contraseña de tu cuenta de Medilu se cambió recién.</p><p>Si no fuiste vos, <a href="${baseUrl}/forgot-password">restablecela ya</a>.</p><p>Medilu.</p>`,
+        }).catch((e) => console.error('No se pudo avisar el cambio de contraseña:', e.message));
+
+        return res.json({ message: 'Contraseña actualizada.' });
+    } catch (err) {
+        console.error('Error en cambiar-contrasena:', err);
+        return res.status(500).json({ error: 'No se pudo cambiar la contraseña.' });
     }
 };
 

@@ -79,6 +79,10 @@ module.exports = {
         forgotPassword: z.object({
             email: z.email('Email inválido'),
         }),
+        cambiarContrasena: z.object({
+            actual: z.string().min(1, 'Ingresá tu contraseña actual').max(200),
+            nueva: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(200),
+        }),
         reenviarConfirmacion: z.object({
             email: z.email('Email inválido'),
         }),
