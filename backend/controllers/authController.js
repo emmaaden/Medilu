@@ -35,6 +35,21 @@ exports.register = async (req, res) => {
         direccion, direccion_profesional, obraSocial, sexo, especialidad, matricula, role, area
     } = req.body;
 
+    // Pasos para deshacer lo creado si el alta falla a mitad (se corren al revés).
+    // Sin esto quedaban cuentas de Auth, clínicas con prueba o códigos usados a medias.
+    const deshacer = [];
+    const revertir = async () => {
+        for (const paso of deshacer.reverse()) {
+            try {
+                const r = await paso();
+                if (r && r.error) console.error('Registro: no se pudo deshacer un paso:', r.error.message);
+            } catch (e) {
+                console.error('Registro: no se pudo deshacer un paso:', e.message);
+            }
+        }
+        deshacer.length = 0;
+    };
+
     try {
         // --- Fase 2: resolver la clínica del profesional ANTES de crear el usuario ---
         // Dos vías de onboarding:
@@ -126,7 +141,45 @@ exports.register = async (req, res) => {
             });
         }
 
-        const userId = data.user.id;
+        // Email ya registrado (auditoría 2026-10-15, #8): con la confirmación de email
+        // activa, Supabase NO da error para no revelar qué emails existen; devuelve un
+        // usuario ofuscado, con un id que no existe y sin identidades. No se crea nada y
+        // se responde igual que a un alta nueva (sin revelar que la cuenta existía).
+        const yaRegistrado = { message: "Registro exitoso", requiereConfirmacion: true };
+        if (Array.isArray(user.identities) && user.identities.length === 0) {
+            return res.json(yaRegistrado);
+        }
+
+        const userId = user.id;
+
+        // Cuenta que ya existía sin confirmar y con sus datos cargados (se registró
+        // antes): no se duplica. Sin datos es una cuenta huérfana de un alta que falló:
+        // se completa ahora y, si vuelve a fallar, se borra.
+        const { data: previas, error: prevErr } = await supabase
+            .from("persona").select("id").eq("id_auth", userId).limit(1);
+        if (prevErr) throw prevErr;
+        if (previas && previas.length > 0) return res.json(yaRegistrado);
+        deshacer.push(() => supabase.auth.admin.deleteUser(userId));
+
+        // El código de activación se marca como usado ANTES de crear nada, y solo si
+        // seguía libre: dos registros simultáneos con el mismo código no pasan los dos.
+        if (codigoRow) {
+            const { data: tomado, error: tomErr } = await supabase
+                .from("codigo_activacion")
+                .update({ usado: true, usado_por: userId })
+                .eq("id", codigoRow.id)
+                .eq("usado", false)
+                .select("id");
+            if (tomErr) throw tomErr;
+            if (!tomado || tomado.length === 0) {
+                await revertir();
+                return res.status(400).json({ error: "Código de activación inválido o ya utilizado." });
+            }
+            deshacer.push(() => supabase
+                .from("codigo_activacion")
+                .update({ usado: false, usado_por: null })
+                .eq("id", codigoRow.id));
+        }
 
         // Crear la clínica nueva (vía b) una vez confirmado el usuario.
         if (role === "PROFESIONAL" && !clinicaId && tieneNombreClinica) {
@@ -149,7 +202,10 @@ exports.register = async (req, res) => {
             if (!cli) throw cliErr || new Error('No se pudo crear la clínica');
             clinicaId = cli.id;
             esAdmin = true;
+            const clinicaNueva = cli.id;
+            deshacer.push(() => supabase.from("clinica").delete().eq("id", clinicaNueva));
             // Fase L: toda clínica nueva arranca con la prueba del plan completo.
+            deshacer.push(() => supabase.from("suscripcion").delete().eq("clinica_id", clinicaNueva));
             await planes.crearPrueba(clinicaId);
         }
 
@@ -174,12 +230,14 @@ exports.register = async (req, res) => {
         if (persona_error) throw persona_error;
 
         const id_persona = persona_data.id;
+        deshacer.push(() => supabase.from("persona").delete().eq("id", id_persona));
 
         if (role === "PACIENTE") {
             // Fase K: cobertura del catálogo global (el paciente aún no tiene clínica).
             // Si no eligió del catálogo, se conserva el texto libre (compatibilidad).
             const cob = await columnasCobertura(req.body, null);
             const cols = cob.ok ? cob.cols : {};
+            deshacer.push(() => supabase.from("paciente").delete().eq("id_persona", id_persona));
             const { error: err } = await supabase
                 .from("paciente")
                 .insert([{ id_persona, obra_social: obraSocial || null, ...cols }]);
@@ -199,7 +257,9 @@ exports.register = async (req, res) => {
                 .select()
                 .single();
             if (err_prof) throw err_prof;
+            deshacer.push(() => supabase.from("profesional").delete().eq("id", data_prof.id));
 
+            deshacer.push(() => supabase.from("especialidad_profesional").delete().eq("id_profesional", data_prof.id));
             const { error: err_esp } = await supabase
                 .from("especialidad_profesional")
                 .insert([{
@@ -211,6 +271,8 @@ exports.register = async (req, res) => {
             // Fase A: crear la membresía (pertenencia + rol en la clínica).
             //   - alta con código  -> rol 'profesional'
             //   - clínica nueva     -> rol 'admin' (esAdmin=true)
+            // (El código de activación ya se marcó como usado al principio.)
+            deshacer.push(() => supabase.from("membresia").delete().eq("id_persona", id_persona));
             const { error: err_mem } = await supabase
                 .from("membresia")
                 .insert([{
@@ -220,14 +282,6 @@ exports.register = async (req, res) => {
                     activo: true,
                 }]);
             if (err_mem) throw err_mem;
-
-            // Marcar el código de activación como usado.
-            if (codigoRow) {
-                await supabase
-                    .from("codigo_activacion")
-                    .update({ usado: true, usado_por: userId })
-                    .eq("id", codigoRow.id);
-            }
         }
 
         if (role === "RECEPCION") {
@@ -236,6 +290,7 @@ exports.register = async (req, res) => {
             // membresía. La clínica activa se resuelve luego a partir de ella.
             // Fase J: con un código de auditor queda como 'auditor' (con el alcance del código).
             const esAuditor = codigoRow && codigoRow.rol === 'auditor';
+            deshacer.push(() => supabase.from("membresia").delete().eq("id_persona", id_persona));
             const { error: err_mem } = await supabase
                 .from("membresia")
                 .insert([{
@@ -247,13 +302,6 @@ exports.register = async (req, res) => {
                     activo: true,
                 }]);
             if (err_mem) throw err_mem;
-
-            if (codigoRow) {
-                await supabase
-                    .from("codigo_activacion")
-                    .update({ usado: true, usado_por: userId })
-                    .eq("id", codigoRow.id);
-            }
         }
 
         // Con la confirmación de email activada, signUp no devuelve sesión: el usuario
@@ -266,6 +314,7 @@ exports.register = async (req, res) => {
 
     } catch (err) {
         console.error("Error detallado en registro:", err);
+        await revertir();
         res.status(500).json({ error: "Error en el registro" });
     }
 };
