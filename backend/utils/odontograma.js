@@ -17,7 +17,7 @@ const CONDICIONES = [
 // Superficies dentales válidas (o null = diente completo).
 const CARAS = ['mesial', 'distal', 'vestibular', 'lingual', 'palatina', 'oclusal', 'incisal'];
 
-// Estado del hallazgo: realizado (azul) | pendiente (rojo).
+// Estado del hallazgo: realizado (rojo) | pendiente (azul).
 const ESTADOS = ['realizado', 'pendiente'];
 
 // Mapeo del `estado` legacy (modelo viejo: un estado por diente entero) al nuevo.
