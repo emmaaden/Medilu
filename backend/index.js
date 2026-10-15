@@ -174,9 +174,14 @@ if (isProd && process.env.MP_ACCESS_TOKEN && !process.env.MP_WEBHOOK_SECRET) {
 let sessionStore; // undefined => MemoryStore (solo desarrollo)
 if (process.env.DATABASE_URL) {
     const pgSession = require('connect-pg-simple')(session);
+    // Tabla en el esquema `sesiones` (no expuesto por la API de Supabase), creada por
+    // db/faseS_sesiones.sql. DATABASE_URL usa el rol medilu_sesiones, que solo puede
+    // leer y escribir esa tabla (no crearla).
     sessionStore = new pgSession({
         conString: process.env.DATABASE_URL,
-        createTableIfMissing: true
+        schemaName: 'sesiones',
+        tableName: 'session',
+        createTableIfMissing: false
     });
 } else {
     console.warn('⚠️  DATABASE_URL no configurada: usando MemoryStore (no apto para producción).');

@@ -1,6 +1,6 @@
 // Sesiones del backend (express-session) de una cuenta (auditoría 2026-10-15, #7).
 //
-// En producción viven en la tabla `session` de connect-pg-simple (DATABASE_URL); en
+// En producción viven en la tabla `sesiones.session` de connect-pg-simple (DATABASE_URL); en
 // desarrollo, en el MemoryStore. Se usa para cerrar las demás sesiones abiertas de
 // una cuenta cuando cambia su contraseña.
 
@@ -20,7 +20,7 @@ async function cerrarOtrasSesiones(req, authId) {
     const p = getPool();
     if (p) {
         const r = await p.query(
-            `DELETE FROM "session" WHERE sess->'user'->>'id' = $1 AND sid <> $2`,
+            `DELETE FROM sesiones.session WHERE sess->'user'->>'id' = $1 AND sid <> $2`,
             [String(authId), sidActual]
         );
         return r.rowCount;
