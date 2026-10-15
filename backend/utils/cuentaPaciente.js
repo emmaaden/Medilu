@@ -51,6 +51,7 @@ async function nombreClinica(clinicaId) {
 async function enviarDatosAcceso({ email, nombre, clave, clinica }) {
     const url = baseUrl();
     const login = url ? `${url}/login` : '';
+    const misDatos = url ? `${url}/mi-perfil` : '';
     const de = clinica ? ` en ${clinica}` : '';
     const hola = nombre ? `Hola ${nombre},` : 'Hola,';
     return sendMail({
@@ -65,7 +66,9 @@ async function enviarDatosAcceso({ email, nombre, clave, clinica }) {
             `Contraseña temporal: ${clave}`,
             login ? `Ingresá en: ${login}` : '',
             '',
-            'Por seguridad, cambiá la contraseña después de entrar, desde "Mis datos".',
+            'Por seguridad, cambiá la contraseña después de entrar: andá a "Mis datos" y, abajo del todo, en "Cambiar contraseña" elegí una nueva.',
+            misDatos ? `Mis datos: ${misDatos}` : '',
+            '',
             'Si no te atendiste en este lugar, ignorá este email.',
             '',
             'Medilu.',
@@ -74,7 +77,7 @@ async function enviarDatosAcceso({ email, nombre, clave, clinica }) {
 <p>Te registraron como paciente${escapeHtml(de)}. Con esta cuenta podés ver tu historia clínica, tus estudios y tus turnos.</p>
 <p><strong>Email:</strong> ${escapeHtml(email)}<br><strong>Contraseña temporal:</strong> <code>${escapeHtml(clave)}</code></p>
 ${login ? `<p><a href="${login}">Ingresá a Medilu</a></p>` : ''}
-<p>Por seguridad, cambiá la contraseña después de entrar, desde “Mis datos”.</p>
+<p>Por seguridad, cambiá la contraseña después de entrar: andá a ${misDatos ? `<a href="${misDatos}">Mis datos</a>` : '“Mis datos”'} y, abajo del todo, en <strong>“Cambiar contraseña”</strong> elegí una nueva.</p>
 <p>Si no te atendiste en este lugar, ignorá este email.</p>
 <p>Medilu.</p>`,
     });
