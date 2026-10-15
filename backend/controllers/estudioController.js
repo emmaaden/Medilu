@@ -165,6 +165,16 @@ exports.subir = async (req, res) => {
     }
 };
 
+// Path del archivo de un estudio, solo si está en la carpeta de su paciente
+// (`<id_paciente>/...`). La fila la puede escribir el paciente por la API de Supabase
+// y el backend firma y borra con service_role: sin este chequeo, un `archivo_path`
+// ajeno daría acceso al archivo de otro paciente (auditoría 2026-10-15, #11).
+function pathPropio(fila) {
+    const p = fila && fila.archivo_path;
+    if (typeof p !== 'string' || fila.id_paciente == null || p.includes('..')) return null;
+    return p.startsWith(`${fila.id_paciente}/`) ? p : null;
+}
+
 // PUT /estudios/:id — el paciente edita los metadatos de un estudio propio.
 exports.actualizar = async (req, res) => {
     try {
@@ -204,13 +214,14 @@ exports.eliminar = async (req, res) => {
 
         // Tomar el path (visible si es dueño; también si es un pro con acceso, pero el
         // DELETE de abajo lo gatea a dueño vía RLS).
-        const { data: fila } = await db.from('estudio').select('id, archivo_path').eq('id', id).maybeSingle();
+        const { data: fila } = await db.from('estudio').select('id, archivo_path, id_paciente').eq('id', id).maybeSingle();
 
-        const { data: borradas, error } = await db.from('estudio').delete().eq('id', id).select('id, archivo_path');
+        const { data: borradas, error } = await db.from('estudio').delete().eq('id', id).select('id, archivo_path, id_paciente');
         if (error) return res.status(400).json({ error: error.message });
         if (!borradas || borradas.length === 0) return res.status(404).json({ error: 'Estudio no encontrado.' });
 
-        const path = borradas[0].archivo_path || fila?.archivo_path;
+        // Solo se borra el objeto si está en la carpeta del paciente (#11).
+        const path = pathPropio(borradas[0]) || pathPropio(fila);
         if (path) await supabase.storage.from(BUCKET).remove([path]).catch(() => {});
 
         return res.json({ message: 'Estudio eliminado' });
@@ -384,15 +395,17 @@ exports.descargar = async (req, res) => {
         // o un profesional al que se lo compartieron.
         const { data: est, error } = await db
             .from('estudio')
-            .select('id, archivo_path')
+            .select('id, archivo_path, id_paciente')
             .eq('id', id)
             .maybeSingle();
         if (error) return res.status(400).json({ error: error.message });
         if (!est) return res.status(404).json({ error: 'Estudio no encontrado.' });
+        const path = pathPropio(est);
+        if (!path) return res.status(404).json({ error: 'Estudio no encontrado.' });
 
         const { data: signed, error: signErr } = await supabase.storage
             .from(BUCKET)
-            .createSignedUrl(est.archivo_path, SIGNED_TTL);
+            .createSignedUrl(path, SIGNED_TTL);
         if (signErr || !signed) return res.status(500).json({ error: 'No se pudo generar el enlace.' });
 
         return res.json({ url: signed.signedUrl });

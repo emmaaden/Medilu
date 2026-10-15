@@ -322,16 +322,22 @@ exports.descargar = async (req, res) => {
         // o un profesional de la clínica del certificado.
         const { data: cert, error } = await db
             .from('certificado_medico')
-            .select('id, archivo_path')
+            .select('id, archivo_path, clinica_id')
             .eq('id', id)
             .maybeSingle();
         if (error) return res.status(400).json({ error: error.message });
         if (!cert) return res.status(404).json({ error: 'Certificado no encontrado.' });
+        // El archivo tiene que estar en la carpeta de la clínica del certificado: la fila
+        // la puede insertar un miembro por la API y acá se firma con service_role (#11).
+        const p = cert.archivo_path;
+        if (typeof p !== 'string' || !cert.clinica_id || p.includes('..') || !p.startsWith(`${cert.clinica_id}/`)) {
+            return res.status(404).json({ error: 'Certificado no encontrado.' });
+        }
 
         // Firmar con service_role (bucket privado).
         const { data: signed, error: signErr } = await supabase.storage
             .from(CERT_BUCKET)
-            .createSignedUrl(cert.archivo_path, SIGNED_TTL);
+            .createSignedUrl(p, SIGNED_TTL);
         if (signErr || !signed) return res.status(500).json({ error: 'No se pudo generar el enlace.' });
 
         return res.json({ url: signed.signedUrl });

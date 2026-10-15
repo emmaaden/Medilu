@@ -155,8 +155,20 @@ const createEventLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
 // ---------------------------------------------------------------------------
 // Sesiones
 // ---------------------------------------------------------------------------
+// En producción no se arranca sin SESSION_SECRET: con el valor por defecto (público en
+// el repo) cualquiera podría firmar cookies de sesión válidas (auditoría 2026-10-15, #12).
 if (!process.env.SESSION_SECRET) {
+    if (isProd) {
+        console.error('⛔ SESSION_SECRET no está definido: el servidor no arranca en producción sin él.');
+        process.exit(1);
+    }
     console.warn('⚠️  SESSION_SECRET no está definido en .env');
+}
+
+// Sin MP_WEBHOOK_SECRET los webhooks de Mercado Pago no se validan por firma (igual se
+// re-consulta cada recurso en MP, pero la firma evita procesar avisos falsos).
+if (isProd && process.env.MP_ACCESS_TOKEN && !process.env.MP_WEBHOOK_SECRET) {
+    console.warn('⚠️  MP_WEBHOOK_SECRET no está definido: los webhooks de Mercado Pago no se validan por firma.');
 }
 
 let sessionStore; // undefined => MemoryStore (solo desarrollo)
@@ -579,7 +591,7 @@ app.post('/internal/send-reminders', async (req, res) => {
         res.json({ ok: true, ...result });
     } catch (error) {
         console.error('Error en send-reminders:', error.message);
-        res.status(500).json({ error: 'Error al enviar recordatorios', details: error.message });
+        res.status(500).json({ error: 'Error al enviar recordatorios' });
     }
 });
 

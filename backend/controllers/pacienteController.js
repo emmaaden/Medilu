@@ -267,7 +267,7 @@ exports.regisPacient = async (req, res) => {
         return res.status(201).json({ message: 'Paciente registrado con éxito', id_paciente: paciente.id, cuenta });
     } catch (err) {
         console.error('Error en regis-pacient:', err);
-        return res.status(500).json({ error: err.message || 'Error al registrar el paciente.' });
+        return res.status(500).json({ error: 'Error al registrar el paciente.' });
     }
 };
 
@@ -512,7 +512,7 @@ exports.saveDataPacient = async (req, res) => {
         return res.status(201).json({ message: 'Registro guardado con éxito' });
     } catch (err) {
         console.error('Error en save-data-pacient:', err);
-        return res.status(500).json({ error: err.message || 'Error al guardar el registro.' });
+        return res.status(500).json({ error: 'Error al guardar el registro.' });
     }
 };
 
@@ -597,7 +597,7 @@ exports.getDataPacient = async (req, res) => {
         });
     } catch (err) {
         console.error('Error en get-data-pacient:', err);
-        return res.status(500).json({ error: err.message || 'Error al obtener los datos del paciente.' });
+        return res.status(500).json({ error: 'Error al obtener los datos del paciente.' });
     }
 };
 

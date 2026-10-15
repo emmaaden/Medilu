@@ -11,6 +11,7 @@
 // Asientos: cuentan solo los profesionales (membresías activas admin | profesional).
 
 const { supabase } = require('../config/supabaseClient');
+const { vigenteDesde } = require('./codigoActivacion');
 
 // Catálogo de features. La clave es lo que se guarda en `plan.features`; el texto es
 // el que ve el usuario. Espejo en frontend/src/lib/planes.ts (mantener alineados).
@@ -189,7 +190,8 @@ async function codigosPendientes(clinicaId) {
         .from('codigo_activacion')
         .select('rol')
         .eq('clinica_id', clinicaId)
-        .eq('usado', false);
+        .eq('usado', false)
+        .gte('creado_en', vigenteDesde()); // los vencidos ya no reservan lugar
     if (error) throw error;
     const pend = { profesionales: 0, recepcion: 0, auditores: 0 };
     for (const c of data || []) {

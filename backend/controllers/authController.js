@@ -7,6 +7,7 @@ const { fichasPaciente } = require('../utils/fichasPaciente');
 const { sendMail } = require('../utils/mailer');
 const { vencimientoLocal } = require('../middleware/userSupabase');
 const { cerrarOtrasSesiones, regenerarSesion } = require('../utils/sesiones');
+const { vencido: codigoVencido, DIAS_VIGENCIA: DIAS_VIGENCIA_CODIGO } = require('../utils/codigoActivacion');
 const { layoutMail, parrafo, fuerte, boton, aviso } = require('../utils/emailLayout');
 require('dotenv').config();
 
@@ -68,12 +69,15 @@ exports.register = async (req, res) => {
         async function resolverCodigo(...rolesEsperados) {
             const { data: cod, error: codErr } = await supabase
                 .from("codigo_activacion")
-                .select("id, clinica_id, usado, rol, alcance_obra_social, alcance_id_obra_social")
+                .select("id, clinica_id, usado, rol, alcance_obra_social, alcance_id_obra_social, creado_en")
                 .eq("codigo", String(activationCode).trim())
                 .maybeSingle();
             if (codErr) throw codErr;
             if (!cod || cod.usado) {
                 return { error: "Código de activación inválido o ya utilizado." };
+            }
+            if (codigoVencido(cod.creado_en)) {
+                return { error: `El código de activación venció (dura ${DIAS_VIGENCIA_CODIGO} días). Pedile uno nuevo al administrador.` };
             }
             // Compat: los códigos previos a la Fase E no tienen rol -> 'profesional'.
             if (!rolesEsperados.includes(cod.rol || 'profesional')) {
@@ -616,7 +620,7 @@ exports.getArea = async (req, res) => {
                 .limit(1);
             if (error) {
                 console.error('Error obteniendo el área:', error);
-                return res.status(400).json({ error: error.message });
+                return res.status(500).json({ error: 'Error al obtener el área' });
             }
             if (data && data[0] && data[0].id_especialidad) area = data[0].id_especialidad.nombre;
         }
@@ -742,7 +746,7 @@ exports.saveArea = async (req, res) => {
                 .select('id')
                 .eq('nombre', especialidad)
                 .maybeSingle();
-            if (error) return res.status(400).json({ error: error.message });
+            if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Especialidad no encontrada' });
             idEspecialidad = data.id;
         }
@@ -755,7 +759,7 @@ exports.saveArea = async (req, res) => {
                 { id_profesional: idRole, id_especialidad: idEspecialidad },
                 { onConflict: 'id_profesional,id_especialidad' }
             );
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) throw error;
 
         return res.json({ message: 'Área asignada correctamente', especialidad: idEspecialidad });
     } catch (err) {
