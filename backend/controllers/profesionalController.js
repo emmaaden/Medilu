@@ -8,7 +8,9 @@ const ERR_SESION = { error: 'Tu sesión expiró. Iniciá sesión de nuevo.' };
 // Datos del profesional
 exports.getDatosProf = async (req, res) => {
     try {
-        const user_id = req.session.user.id; // id de auth.users (persona.id_auth)
+        // Fase O: la cuenta puede tener además fichas de paciente (otras personas con el
+        // mismo id_auth): se usa la persona de staff de la sesión.
+        const personaId = req.session.user.personaId;
 
         const db = await getUserSupabase(req);
         if (!db) return res.status(401).json(ERR_SESION);
@@ -28,7 +30,7 @@ exports.getDatosProf = async (req, res) => {
                     turnos_online
                 )
             `)
-            .eq("id_auth", user_id)
+            .eq("id", personaId)
             .maybeSingle();
 
         if (error) {

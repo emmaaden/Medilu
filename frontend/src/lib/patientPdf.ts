@@ -10,6 +10,8 @@ import { LOGO_PDF } from "@/lib/brandMark"
 import type { CodificacionRegistro } from "@/lib/catalogos"
 
 export type HistoryEntry = {
+  /** Fase O: clínica del registro (en la historia del paciente, que junta todas). */
+  clinica?: string
   profesional: string
   area: string
   fecha: string
@@ -41,6 +43,8 @@ export type Paciente = {
   tieneCuenta?: boolean
   sexo: string
   fechaApertura: string
+  /** Fase O: clínicas donde el paciente tiene ficha (solo en "Mi historia"). */
+  clinicas?: string[]
   history: HistoryEntry[]
 }
 
@@ -142,6 +146,7 @@ export function downloadPatientHistoryPdf(p: Paciente) {
   }
 
   ;(p.history || []).forEach((entry) => {
+    if (entry.clinica) line(`Clínica: ${entry.clinica}`)
     line(`Profesional: ${entry.profesional}`)
     line(`Área: ${entry.area}`)
     line(`Fecha: ${entry.fecha}hs`)

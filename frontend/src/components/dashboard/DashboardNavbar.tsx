@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Link, NavLink, useNavigate } from "react-router-dom"
+import { toast } from "sonner"
 import {
   Menu,
   LayoutDashboard,
@@ -20,6 +21,7 @@ import {
   ShieldPlus,
   CreditCard,
   Gauge,
+  UserRound,
 } from "lucide-react"
 import { cn } from "cn"
 import { Button } from "@/components/ui/button"
@@ -43,6 +45,7 @@ import { HELP_URL } from "@/lib/site"
 import { useAuth } from "@/contexts/AuthContext"
 import { ThemeToggle } from "@/components/site/ThemeToggle"
 import { ESTADO_LABEL, tieneFeature, type Feature } from "@/lib/planes"
+import { cambiarPerfil } from "@/lib/perfil"
 
 type NavItem = {
   to: string
@@ -169,6 +172,15 @@ export function DashboardNavbar() {
     navigate("/login")
   }
 
+  // Fase O: la cuenta también es paciente (en esta u otra clínica).
+  async function entrarComoPaciente() {
+    try {
+      window.location.assign(await cambiarPerfil("paciente"))
+    } catch {
+      toast.error("No se pudo cambiar de perfil.")
+    }
+  }
+
   const initials =
     (user?.fullName || user?.email || "?")
       .split(" ")
@@ -291,6 +303,11 @@ export function DashboardNavbar() {
                     </Link>
                   </DropdownMenuItem>
                 )}
+                {user?.perfiles?.includes("paciente") && (
+                  <DropdownMenuItem onSelect={entrarComoPaciente}>
+                    <UserRound /> Entrar como paciente
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onSelect={handleLogout} variant="destructive">
                   <LogOut /> Cerrar sesión
                 </DropdownMenuItem>
@@ -345,6 +362,11 @@ export function DashboardNavbar() {
                 <p className="mb-2 truncate px-1 text-xs text-muted-foreground">
                   {user?.email}
                 </p>
+                {user?.perfiles?.includes("paciente") && (
+                  <Button variant="ghost" className="mb-2 w-full" onClick={entrarComoPaciente}>
+                    <UserRound /> Entrar como paciente
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   className="w-full"

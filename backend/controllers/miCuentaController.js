@@ -8,11 +8,17 @@
 // cliente "como usuario" (RLS por JWT) porque el paciente no tiene clinica_id y las
 // políticas por tenant no lo habilitarían; el filtrado por id de sesión es el control.
 // Las rutas pasan por requireRole('paciente') (ver routes/miCuentaRoutes.js).
+//
+// Fase O: la cuenta puede tener una ficha de paciente en cada clínica donde la
+// atendieron (utils/fichasPaciente). La historia junta los registros de todas, con la
+// clínica de cada uno; los datos personales se muestran de la ficha principal y al
+// editarlos se copian a todas.
 
 const { supabase } = require('../config/supabaseClient');
 const { serializarDiente } = require('../utils/odontograma');
 const { columnasCobertura } = require('../utils/cobertura');
 const { serializarCodificacion, SELECT_CODIFICACION } = require('../utils/codificacion');
+const { fichasPaciente } = require('../utils/fichasPaciente');
 
 // Campos de persona que el paciente puede editar (NO dni / id_auth / clinica_id).
 const CAMPOS_PERSONA = ['nombre', 'apellido', 'telefono', 'direccion', 'sexo'];
@@ -62,16 +68,25 @@ function fmtFecha(iso) {
     return d.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
 }
 
-// Persona (por id_auth de la sesión) + su fila paciente. Devuelve null si no existe.
-async function getPersonaPaciente(session) {
-    const authId = session.user.id;
+// Fichas de paciente de la cuenta de la sesión (la principal primero).
+function getFichas(session) {
+    return fichasPaciente(session.user.id);
+}
+
+// Registros clínicos de todas las fichas, con la clínica de cada uno (más viejo primero).
+async function registrosDeFichas(fichas) {
+    const clinicaDe = new Map(fichas.map((f) => [f.paciente.id, f.clinica]));
     const { data, error } = await supabase
-        .from('persona')
-        .select('id, clinica_id, nombre, apellido, dni, telefono, direccion, sexo, fecha_nacimiento, email, paciente(id, obra_social, id_obra_social, nro_afiliado, plan)')
-        .eq('id_auth', authId)
-        .maybeSingle();
+        .from('registro_clinico')
+        .select(`id, id_paciente, fecha, profesional_nombre, area, sintomas, diagnostico, tratamiento,
+            clinica(nombre), registro_diente(numero, condicion, cara, estado, notas), ${SELECT_CODIFICACION}`)
+        .in('id_paciente', fichas.map((f) => f.paciente.id))
+        .order('fecha', { ascending: true });
     if (error) throw error;
-    return data || null;
+    return (data || []).map((r) => ({
+        ...r,
+        clinicaNombre: (r.clinica && r.clinica.nombre) || clinicaDe.get(r.id_paciente) || null,
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -79,9 +94,9 @@ async function getPersonaPaciente(session) {
 // ---------------------------------------------------------------------------
 exports.getPerfil = async (req, res) => {
     try {
-        const persona = await getPersonaPaciente(req.session);
-        if (!persona) return res.status(404).json({ error: 'No encontramos tus datos.' });
-        const paciente = persona.paciente && persona.paciente[0];
+        const fichas = await getFichas(req.session);
+        if (fichas.length === 0) return res.status(404).json({ error: 'No encontramos tus datos.' });
+        const { persona, paciente } = fichas[0];
 
         return res.json({
             nombre: persona.nombre || '',
@@ -109,8 +124,8 @@ exports.getPerfil = async (req, res) => {
 // ---------------------------------------------------------------------------
 exports.updatePerfil = async (req, res) => {
     try {
-        const persona = await getPersonaPaciente(req.session);
-        if (!persona) return res.status(404).json({ error: 'No encontramos tus datos.' });
+        const fichas = await getFichas(req.session);
+        if (fichas.length === 0) return res.status(404).json({ error: 'No encontramos tus datos.' });
 
         // Solo campos permitidos (el dni y la identidad NO se tocan).
         const updatePersona = {};
@@ -123,21 +138,27 @@ exports.updatePerfil = async (req, res) => {
         }
 
         if (Object.keys(updatePersona).length > 0) {
+            // Fase O: es la misma persona en todas sus clínicas.
             const { error } = await supabase
                 .from('persona')
                 .update(updatePersona)
-                .eq('id', persona.id);
+                .in('id', fichas.map((f) => f.persona.id));
             if (error) throw error;
         }
 
         // Obra social vive en paciente. Fase K: del catálogo (global o de su clínica)
         // + afiliado + plan; el texto libre queda solo por compatibilidad.
-        const paciente = persona.paciente && persona.paciente[0];
-        if (paciente) {
-            const cob = await columnasCobertura(req.body, persona.clinica_id || null);
-            if (!cob.ok) return res.status(400).json({ error: cob.error });
+        // Fase O: se valida contra la clínica de la ficha principal (el formulario ofrece
+        // ese catálogo) y se copia a las demás fichas donde esa obra social es válida
+        // (una propia de otra clínica no se copia; afiliado y plan, sí).
+        const principal = await columnasCobertura(req.body, fichas[0].clinicaId);
+        if (!principal.ok) return res.status(400).json({ error: principal.error });
+        for (const { paciente, clinicaId } of fichas) {
+            let cob = await columnasCobertura(req.body, clinicaId);
+            const osValida = cob.ok;
+            if (!osValida) cob = await columnasCobertura({ ...req.body, idObraSocial: undefined }, clinicaId);
             const cols = { ...cob.cols };
-            if (req.body.obraSocial !== undefined && cols.id_obra_social === undefined) {
+            if (osValida && req.body.obraSocial !== undefined && cols.id_obra_social === undefined) {
                 cols.obra_social = req.body.obraSocial || null;
                 cols.id_obra_social = null;
             }
@@ -161,18 +182,10 @@ exports.updatePerfil = async (req, res) => {
 // ---------------------------------------------------------------------------
 exports.exportHistoria = async (req, res) => {
     try {
-        const persona = await getPersonaPaciente(req.session);
-        if (!persona) return res.status(404).json({ error: 'No encontramos tus datos.' });
-        const paciente = persona.paciente && persona.paciente[0];
-        if (!paciente) return res.status(404).json({ error: 'No encontramos tu ficha de paciente.' });
-
-        const { data: registros, error } = await supabase
-            .from('registro_clinico')
-            .select(`id, fecha, profesional_nombre, area, sintomas, diagnostico, tratamiento,
-                registro_diente(numero, condicion, cara, estado, notas), ${SELECT_CODIFICACION}`)
-            .eq('id_paciente', paciente.id)
-            .order('fecha', { ascending: true });
-        if (error) throw error;
+        const fichas = await getFichas(req.session);
+        if (fichas.length === 0) return res.status(404).json({ error: 'No encontramos tu ficha de paciente.' });
+        const { persona, paciente } = fichas[0];
+        const registros = await registrosDeFichas(fichas);
 
         const doc = {
             formato: 'medilu.hc',
@@ -195,6 +208,7 @@ exports.exportHistoria = async (req, res) => {
                 registros: (registros || []).map((r) => ({
                     origenId: r.id,
                     fecha: r.fecha,
+                    clinica: r.clinicaNombre, // Fase O: de qué clínica es cada registro
                     profesional: r.profesional_nombre || null,
                     area: r.area || null,
                     sintomas: r.sintomas || null,
@@ -222,20 +236,13 @@ exports.exportHistoria = async (req, res) => {
 // ---------------------------------------------------------------------------
 exports.getHistoria = async (req, res) => {
     try {
-        const persona = await getPersonaPaciente(req.session);
-        if (!persona) return res.status(404).json({ error: 'No encontramos tus datos.' });
-        const paciente = persona.paciente && persona.paciente[0];
-        if (!paciente) return res.status(404).json({ error: 'No encontramos tu ficha de paciente.' });
+        const fichas = await getFichas(req.session);
+        if (fichas.length === 0) return res.status(404).json({ error: 'No encontramos tu ficha de paciente.' });
+        const { persona, paciente } = fichas[0];
+        const registros = await registrosDeFichas(fichas);
 
-        const { data: registros, error: regError } = await supabase
-            .from('registro_clinico')
-            .select(`id, profesional_nombre, area, fecha, sintomas, diagnostico, tratamiento,
-                registro_diente(numero, condicion, cara, estado, notas), ${SELECT_CODIFICACION}`)
-            .eq('id_paciente', paciente.id)
-            .order('fecha', { ascending: true });
-        if (regError) throw regError;
-
-        const history = (registros || []).map(r => ({
+        const history = registros.map(r => ({
+            clinica: r.clinicaNombre || '',
             profesional: r.profesional_nombre || '',
             area: r.area || '',
             fecha: fmtFechaHora(r.fecha),
@@ -246,7 +253,7 @@ exports.getHistoria = async (req, res) => {
             ...serializarCodificacion(r),
         }));
 
-        const fechaApertura = registros && registros.length > 0 ? fmtFecha(registros[0].fecha) : '';
+        const fechaApertura = registros.length > 0 ? fmtFecha(registros[0].fecha) : '';
 
         return res.json({
             fullName: [persona.nombre, persona.apellido].filter(Boolean).join(' '),
@@ -261,6 +268,8 @@ exports.getHistoria = async (req, res) => {
             nroAfiliado: paciente.nro_afiliado || '',
             plan: paciente.plan || '',
             fechaApertura,
+            // Fase O: clínicas donde tiene ficha (las de los registros, para el encabezado).
+            clinicas: [...new Set(fichas.map((f) => f.clinica).filter(Boolean))],
             history,
         });
     } catch (err) {
@@ -283,14 +292,14 @@ const ACCIONES_PACIENTE = [
 
 exports.misAccesos = async (req, res) => {
     try {
-        const persona = await getPersonaPaciente(req.session);
-        const paciente = persona && persona.paciente && persona.paciente[0];
-        if (!paciente) return res.json({ accesos: [] });
+        const fichas = await getFichas(req.session);
+        if (fichas.length === 0) return res.json({ accesos: [] });
+        const clinicaDe = new Map(fichas.map((f) => [f.paciente.id, f.clinica]));
 
         const { data, error } = await supabase
             .from('hc_acceso')
-            .select('id, creado_en, actor_nombre, actor_rol, accion')
-            .eq('id_paciente', paciente.id)
+            .select('id, creado_en, actor_nombre, actor_rol, accion, id_paciente')
+            .in('id_paciente', [...clinicaDe.keys()])
             .in('accion', ACCIONES_PACIENTE)
             .order('creado_en', { ascending: false })
             .limit(200);
@@ -303,6 +312,7 @@ exports.misAccesos = async (req, res) => {
                 actor: a.actor_nombre || '',
                 rol: a.actor_rol || '',
                 accion: a.accion,
+                clinica: clinicaDe.get(a.id_paciente) || '',
             })),
         });
     } catch (err) {

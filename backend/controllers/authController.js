@@ -3,6 +3,7 @@ const { slugify } = require('../utils/slug');
 const { getMembresiasActivas, roleSinProfesional } = require('../utils/membresias');
 const { columnasCobertura } = require('../utils/cobertura');
 const planes = require('../utils/planes');
+const { fichasPaciente } = require('../utils/fichasPaciente');
 require('dotenv').config();
 
 // service_role: SALTEA la RLS. Se usa SOLO para operaciones sobre tablas.
@@ -283,36 +284,7 @@ exports.login = async (req, res) => {
 
         const userId = data.user.id;
 
-        // 2. Detectar el rol desde la base (NO se confía en un rol enviado por el
-        //    cliente). Un mismo formulario de login sirve para profesional y paciente.
-        //    Si una persona fuese ambas cosas, se prioriza profesional.
-        const { data: persona, error: personaError } = await supabase
-            .from("persona")
-            .select(`id, clinica_id, profesional(id), paciente(id)`)
-            .eq("id_auth", userId)
-            .maybeSingle();
-        if (personaError) {
-            console.error("Error al buscar la persona en login:", personaError);
-        }
-
-        const profRow = persona?.profesional?.[0];
-        const pacRow = persona?.paciente?.[0];
-        const personaId = persona?.id || null;
-
-        let role = null;
-        let idRole = null;
-
-        if (profRow) {
-            role = "profesional";
-            idRole = profRow.id;
-        } else if (pacRow) {
-            role = "paciente";
-            idRole = pacRow.id;
-        }
-        // 3. Sin fila en profesional/paciente puede ser RECEPCIÓN (Fase E): se confirma
-        //    más abajo con las membresías activas. No cortamos acá.
-
-        // 4. Guardar los tokens de Supabase (Fase 2c: operar por-JWT bajo RLS).
+        // 2. Guardar los tokens de Supabase (Fase 2c: operar por-JWT bajo RLS).
         if (data.session) {
             req.session.sb = {
                 accessToken: data.session.access_token,
@@ -320,67 +292,158 @@ exports.login = async (req, res) => {
                 expiresAt: data.session.expires_at, // epoch en segundos
             };
         }
-
-        // 5. Fase A — resolver la clínica activa a partir de las MEMBRESÍAS.
-        //    Los pacientes siguen mono-clínica (persona.clinica_id).
         req.session.isAuthenticated = true;
 
-        if (role === "paciente") {
+        // 3. Detectar los perfiles desde la base (NO se confía en un rol enviado por el
+        //    cliente). Un mismo formulario de login sirve para staff y paciente.
+        //    Fase O: una cuenta puede ser staff y además paciente (en otra clínica o en
+        //    la suya); en ese caso elige con qué perfil entrar (POST /auth/select-perfil).
+        const auth = { id: userId, email: data.user.email };
+        const perfiles = await perfilesDeCuenta(userId);
+
+        if (perfiles.staff && perfiles.fichas.length > 0) {
             req.session.user = {
-                idRole, id: userId, personaId, email: data.user.email, role,
-                clinicaId: persona?.clinica_id || null, rol: null, esAdmin: false,
+                idRole: null, id: userId, personaId: null, email: auth.email, role: null,
+                clinicaId: null, rol: null, esAdmin: false, perfiles: ['staff', 'paciente'],
             };
-            return res.json({ message: "Login exitoso", user: req.session.user });
-        }
-
-        // Profesional/recepción/admin: puede tener N clínicas.
-        let membresias = [];
-        try {
-            membresias = await getMembresiasActivas(supabase, personaId);
-        } catch (e) {
-            console.error("Error obteniendo membresías en login:", e.message);
-        }
-
-        if (membresias.length === 0) {
-            // Sin membresía activa: dado de baja en todas sus clínicas, cuenta legacy
-            // sin backfill, o un usuario sin ningún rol. No puede operar.
-            req.session.destroy(() => {});
-            return res.status(403).json({
-                error: role
-                    ? "No tenés una clínica activa asignada. Contactá al administrador."
-                    : "El usuario no tiene rol asignado",
+            return res.json({
+                message: "Elegí con qué perfil entrar",
+                needsProfileSelection: true,
+                user: req.session.user,
             });
         }
+        if (perfiles.staff) return iniciarStaff(req, res, auth, perfiles.staff, ['staff']);
+        if (perfiles.fichas.length > 0) return iniciarPaciente(req, res, auth, perfiles.fichas, ['paciente']);
 
-        // Fase E: sin fila en `profesional` pero con membresía activa => RECEPCIÓN
-        // (Fase J: o AUDITOR, si esa es su membresía).
-        if (!role) role = roleSinProfesional(membresias);
-
-        if (membresias.length === 1) {
-            const m = membresias[0];
-            req.session.user = {
-                idRole, id: userId, personaId, email: data.user.email, role,
-                clinicaId: m.clinicaId, rol: m.rol, esAdmin: m.esAdmin,
-                alcanceObraSocial: m.alcanceObraSocial, alcanceIdObraSocial: m.alcanceIdObraSocial,
-            };
-            return res.json({ message: "Login exitoso", user: req.session.user });
-        }
-
-        // Varias clínicas: no se fija ninguna todavía; el cliente debe elegir.
-        req.session.user = {
-            idRole, id: userId, personaId, email: data.user.email, role,
-            clinicaId: null, rol: null, esAdmin: false, alcanceObraSocial: null, alcanceIdObraSocial: null,
-        };
-        return res.json({
-            message: "Elegí la clínica para trabajar",
-            needsClinicSelection: true,
-            clinicas: membresias.map((m) => ({ clinicaId: m.clinicaId, nombre: m.nombre, rol: m.rol })),
-            user: req.session.user,
+        // Sin perfil: dado de baja en todas sus clínicas, cuenta legacy sin backfill, o
+        // un usuario sin ningún rol. No puede operar.
+        req.session.destroy(() => {});
+        return res.status(403).json({
+            error: perfiles.profesionalSinClinica
+                ? "No tenés una clínica activa asignada. Contactá al administrador."
+                : "El usuario no tiene rol asignado",
         });
 
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Error al iniciar sesión" });
+    }
+};
+
+// Fase O — perfiles de una cuenta de Auth:
+//   staff: { persona, profRow, membresias } si es profesional/recepción/auditor con al
+//          menos una membresía activa (una cuenta tiene una sola persona de staff).
+//   fichas: sus fichas de paciente (una por clínica; ver utils/fichasPaciente).
+async function perfilesDeCuenta(userId) {
+    const { data: personas, error } = await supabase
+        .from("persona")
+        .select("id, profesional(id)")
+        .eq("id_auth", userId)
+        .order("id", { ascending: true });
+    if (error) console.error("Error al buscar las personas en login:", error);
+
+    // Profesional primero; si no hay, la persona con membresías (recepción/auditoría).
+    const lista = [...(personas || [])].sort((a, b) => !!b.profesional?.[0] - !!a.profesional?.[0]);
+    let staff = null;
+    for (const p of lista) {
+        let membresias = [];
+        try {
+            membresias = await getMembresiasActivas(supabase, p.id);
+        } catch (e) {
+            console.error("Error obteniendo membresías en login:", e.message);
+        }
+        if (membresias.length > 0) {
+            staff = { persona: p, profRow: p.profesional?.[0] || null, membresias };
+            break;
+        }
+    }
+
+    return {
+        staff,
+        profesionalSinClinica: !staff && lista.some((p) => p.profesional?.[0]),
+        fichas: await fichasPaciente(userId),
+    };
+}
+
+// Sesión de paciente: la ficha "principal" (autoregistro o la más vieja) da idRole y
+// personaId por compatibilidad; lo del paciente se arma con todas sus fichas.
+function iniciarPaciente(req, res, auth, fichas, perfiles) {
+    const principal = fichas[0];
+    req.session.user = {
+        idRole: principal.paciente.id, id: auth.id, personaId: principal.persona.id,
+        email: auth.email, role: "paciente",
+        clinicaId: principal.clinicaId, rol: null, esAdmin: false, perfiles,
+    };
+    return res.json({ message: "Login exitoso", user: req.session.user });
+}
+
+// Sesión de staff (Fase A): la clínica activa sale de las MEMBRESÍAS.
+function iniciarStaff(req, res, auth, staff, perfiles) {
+    const { persona, profRow, membresias } = staff;
+    // Fase E: sin fila en `profesional` => RECEPCIÓN (Fase J: o AUDITOR).
+    const role = profRow ? "profesional" : roleSinProfesional(membresias);
+    const base = {
+        idRole: profRow ? profRow.id : null, id: auth.id, personaId: persona.id,
+        email: auth.email, role, perfiles,
+    };
+
+    if (membresias.length === 1) {
+        const m = membresias[0];
+        req.session.user = {
+            ...base, clinicaId: m.clinicaId, rol: m.rol, esAdmin: m.esAdmin,
+            alcanceObraSocial: m.alcanceObraSocial, alcanceIdObraSocial: m.alcanceIdObraSocial,
+        };
+        return res.json({ message: "Login exitoso", user: req.session.user });
+    }
+
+    // Varias clínicas: no se fija ninguna todavía; el cliente debe elegir.
+    req.session.user = {
+        ...base, clinicaId: null, rol: null, esAdmin: false, alcanceObraSocial: null, alcanceIdObraSocial: null,
+    };
+    return res.json({
+        message: "Elegí la clínica para trabajar",
+        needsClinicSelection: true,
+        clinicas: membresias.map((m) => ({ clinicaId: m.clinicaId, nombre: m.nombre, rol: m.rol })),
+        user: req.session.user,
+    });
+}
+
+// Fase O — GET /auth/perfiles: con qué perfiles puede entrar la cuenta (para el
+// selector), con las clínicas de cada uno.
+exports.misPerfiles = async (req, res) => {
+    try {
+        const { staff, fichas } = await perfilesDeCuenta(req.session.user.id);
+        return res.json({
+            activo: req.session.user.role === "paciente" ? "paciente" : (req.session.user.role ? "staff" : null),
+            staff: staff && {
+                role: staff.profRow ? "profesional" : roleSinProfesional(staff.membresias),
+                clinicas: staff.membresias.map((m) => m.nombre).filter(Boolean),
+            },
+            paciente: fichas.length > 0 ? { clinicas: fichas.map((f) => f.clinica).filter(Boolean) } : null,
+        });
+    } catch (err) {
+        console.error("Error en perfiles:", err);
+        return res.status(500).json({ error: "Error al obtener tus perfiles" });
+    }
+};
+
+// Fase O — POST /auth/select-perfil { perfil: 'staff' | 'paciente' }: entra (o cambia)
+// con ese perfil. Se recalcula desde la base: no se confía en la sesión ni en el cliente.
+exports.selectPerfil = async (req, res) => {
+    try {
+        const u = req.session.user;
+        const auth = { id: u.id, email: u.email };
+        const { staff, fichas } = await perfilesDeCuenta(u.id);
+        const disponibles = [staff && "staff", fichas.length > 0 && "paciente"].filter(Boolean);
+        if (!disponibles.includes(req.body.perfil)) {
+            return res.status(403).json({ error: "Tu cuenta no tiene ese perfil." });
+        }
+        return req.body.perfil === "staff"
+            ? iniciarStaff(req, res, auth, staff, disponibles)
+            : iniciarPaciente(req, res, auth, fichas, disponibles);
+    } catch (err) {
+        console.error("Error en select-perfil:", err);
+        return res.status(500).json({ error: "Error al elegir el perfil" });
     }
 };
 
@@ -437,6 +500,10 @@ exports.selectClinica = async (req, res) => {
         const personaId = req.session.user?.personaId;
         const { clinicaId } = req.body;
         if (!personaId) return res.status(403).json({ error: 'Sesión sin identidad.' });
+        // Fase O: la clínica activa es del perfil de staff; el paciente no la elige.
+        if (req.session.user.role === 'paciente') {
+            return res.status(403).json({ error: 'Entrá con tu perfil de profesional para elegir una clínica.' });
+        }
         if (!clinicaId) return res.status(400).json({ error: 'Debés indicar una clínica.' });
 
         const membresias = await getMembresiasActivas(supabase, personaId);

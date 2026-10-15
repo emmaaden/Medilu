@@ -88,6 +88,9 @@ module.exports = {
         selectClinica: z.object({
             clinicaId: z.uuid('Clínica inválida'),
         }),
+        selectPerfil: z.object({
+            perfil: z.enum(['staff', 'paciente'], 'Perfil inválido'),
+        }),
     },
 
     admin: {

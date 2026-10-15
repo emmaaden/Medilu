@@ -37,6 +37,7 @@ const MisEstudios = lazy(() => import("@/pages/MisEstudios"))
 const MiPerfil = lazy(() => import("@/pages/MiPerfil"))
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"))
 const SeleccionarClinica = lazy(() => import("@/pages/SeleccionarClinica"))
+const ElegirPerfil = lazy(() => import("@/pages/ElegirPerfil"))
 
 // Dashboard (área privada)
 const DashboardHome = lazy(() => import("@/pages/dashboard/Home"))
@@ -155,6 +156,8 @@ function App() {
 
         {/* Selección de clínica: post-login, flujo aislado (sin navbar público) */}
         <Route path="/seleccionar-clinica" element={<SeleccionarClinica />} />
+        {/* Fase O: cuenta de staff que además es paciente → elegir con qué perfil entrar */}
+        <Route path="/elegir-perfil" element={<ElegirPerfil />} />
 
         {/* reset-password: sin navbar/footer (flujo aislado tras el email) */}
         <Route path="/reset-password" element={<ResetPassword />} />

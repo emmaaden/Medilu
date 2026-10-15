@@ -37,13 +37,16 @@ export default function Login() {
       const res = await api.post<{
         user?: { role?: string }
         needsClinicSelection?: boolean
+        needsProfileSelection?: boolean
       }>("/auth/login", values)
       toast.success("Bienvenido/a")
       // Paciente → su área de turnos. Profesional con varias clínicas → selector.
       // Profesional con una sola clínica → panel. Navegación completa para que la
       // nueva sesión (cookie httpOnly) se tome en el primer render.
-      const destino =
-        res?.user?.role === "paciente"
+      // Cuenta del equipo de una clínica que además es paciente → elegir perfil.
+      const destino = res?.needsProfileSelection
+        ? "/elegir-perfil"
+        : res?.user?.role === "paciente"
           ? "/mis-turnos"
           : res?.needsClinicSelection
             ? "/seleccionar-clinica"

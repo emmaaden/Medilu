@@ -9,6 +9,10 @@
 // email, así que quien la recibe es quien controla la casilla. Por eso el profesional
 // tiene que cargar el email REAL del paciente (el formulario se lo advierte).
 //
+// Fase O: si el email ya tiene cuenta (el paciente se atiende en otra clínica de
+// Medilu, o es profesional), la ficha nueva se vincula a ESA cuenta cuando el DNI y el
+// email coinciden, y se le avisa por mail. Así ve la historia de todas sus clínicas.
+//
 // Usa el cliente service_role (auth.admin y el UPDATE de persona.id_auth).
 
 const crypto = require('crypto');
@@ -92,7 +96,8 @@ async function avisarVinculacion({ email, nombre, clinica }) {
 // paciente ya ocurrió y no debe fallar por la cuenta. Devuelve:
 //   { estado: 'creada', mailEnviado, claveTemporal? }  (la clave solo si el mail NO salió,
 //                                                        para que el profesional se la dé)
-//   { estado: 'email_en_uso' }  ese email ya tiene una cuenta en Medilu (no se vincula)
+//   { estado: 'vinculada', mailEnviado }  ya tenía cuenta (mismo DNI y email): se vinculó
+//   { estado: 'email_en_uso' }  ese email es de otra cuenta (otro DNI): no se vincula
 //   { estado: 'sin_email' }
 //   { estado: 'error' }
 async function crearCuentaPaciente({ personaId, email, nombre, clinicaId }) {
@@ -108,7 +113,10 @@ async function crearCuentaPaciente({ personaId, email, nombre, clinicaId }) {
             user_metadata: { origen: 'alta_profesional', clinica_id: clinicaId || null },
         });
         if (error) {
-            if (esEmailEnUso(error)) return { estado: 'email_en_uso' };
+            if (esEmailEnUso(error)) {
+                return (await vincularCuentaExistente({ personaId, email: mail, nombre, clinicaId }))
+                    || { estado: 'email_en_uso' };
+            }
             throw error;
         }
 
@@ -138,6 +146,55 @@ async function crearCuentaPaciente({ personaId, email, nombre, clinicaId }) {
         console.error('Cuenta paciente: error creando la cuenta:', e.message || e);
         return { estado: 'error' };
     }
+}
+
+// Fase O: el email ya tiene cuenta. Si alguna persona con el MISMO DNI está vinculada
+// a una cuenta con ESE email, es la misma persona: la ficha nueva se ata a esa cuenta
+// (una persona por clínica por cuenta) y se le avisa. Devuelve null si no corresponde.
+async function vincularCuentaExistente({ personaId, email, nombre, clinicaId }) {
+    const { data: persona, error } = await supabase
+        .from('persona')
+        .select('dni, id_auth')
+        .eq('id', personaId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!persona || !persona.dni || persona.id_auth) return null;
+
+    const { data: mismas, error: dniErr } = await supabase
+        .from('persona')
+        .select('id_auth')
+        .eq('dni', persona.dni)
+        .neq('id', personaId)
+        .not('id_auth', 'is', null);
+    if (dniErr) throw dniErr;
+
+    for (const authId of new Set((mismas || []).map((p) => p.id_auth))) {
+        const { data } = await supabase.auth.admin.getUserById(authId);
+        if (!data || !data.user || String(data.user.email || '').toLowerCase() !== email) continue;
+
+        // Solo si la ficha sigue sin cuenta. Si la cuenta ya tiene otra persona en esta
+        // clínica (índice único id_auth+clinica_id), no se vincula.
+        const { data: upd, error: updErr } = await supabase
+            .from('persona')
+            .update({ id_auth: authId })
+            .eq('id', personaId)
+            .is('id_auth', null)
+            .select('id');
+        if (updErr) {
+            if (updErr.code === '23505') return null;
+            throw updErr;
+        }
+        if (!upd || upd.length === 0) return null;
+
+        let mailEnviado = false;
+        try {
+            mailEnviado = await avisarVinculacion({ email, nombre, clinica: await nombreClinica(clinicaId) });
+        } catch (e) {
+            console.error('Cuenta paciente: no se pudo avisar la vinculación:', e.message);
+        }
+        return { estado: 'vinculada', mailEnviado };
+    }
+    return null;
 }
 
 // Paciente que se registró solo (persona sin clínica, con cuenta) con ese DNI.

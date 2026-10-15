@@ -26,6 +26,10 @@ export type CurrentUser = {
   alcanceObraSocial?: string | null
   clinicas: ClinicaMembresia[]
   needsClinicSelection: boolean
+  // Fase O: perfiles de la cuenta (staff y/o paciente). Con los dos y sin elegir
+  // todavía, `role` viene vacío y needsProfileSelection en true.
+  perfiles: ("staff" | "paciente")[]
+  needsProfileSelection: boolean
   // Fase L: plan de la clínica activa (null para el paciente o sin clínica elegida).
   plan: PlanSesion | null
   // Fase L: equipo de la plataforma (activa planes y edita precios).

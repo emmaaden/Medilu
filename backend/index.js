@@ -33,6 +33,7 @@ const pagoRoutes = require('./routes/pagoRoutes'); // Fase M: suscripción de la
 // (los guards de auth se aplican en cada router; el dashboard pasó al SPA)
 const { supabase } = require('./config/supabaseClient');
 const { getMembresiasActivas } = require('./utils/membresias');
+const { fichasPaciente } = require('./utils/fichasPaciente'); // Fase O
 const { generarTokenGestion } = require('./utils/turnoToken');
 const { sendMail, isMailerConfigured } = require('./utils/mailer');
 const { slotsDisponibles, estaLibre } = require('./utils/disponibilidad');
@@ -241,13 +242,13 @@ app.get('/api/user', async (req, res) => {
     const u = req.session.user;
 
     // Nombre completo desde persona (para dashboards). Best-effort: no bloquea si falla.
+    // Fase O: una cuenta puede tener varias personas (una por clínica): se usa la de la
+    // sesión (staff, o la ficha principal del paciente).
     let fullName = null;
     try {
-        const { data } = await supabase
-            .from('persona')
-            .select('nombre, apellido')
-            .eq('id_auth', u.id)
-            .maybeSingle();
+        const { data } = u.personaId
+            ? await supabase.from('persona').select('nombre, apellido').eq('id', u.personaId).maybeSingle()
+            : { data: null };
         if (data) fullName = [data.nombre, data.apellido].filter(Boolean).join(' ');
     } catch (err) {
         console.error('Error obteniendo nombre en /api/user:', err.message);
@@ -303,6 +304,10 @@ app.get('/api/user', async (req, res) => {
         alcanceIdObraSocial: u.alcanceIdObraSocial || null,
         clinicas,
         needsClinicSelection,
+        // Fase O: perfiles de la cuenta (staff y/o paciente). Con los dos y sin elegir
+        // todavía (role null), el cliente muestra el selector de perfil.
+        perfiles: u.perfiles || [],
+        needsProfileSelection: !u.role && (u.perfiles || []).length > 1,
         plan,
         // Fase L: equipo de la plataforma (activa planes y edita precios).
         esPlataforma: planes.esAdminPlataforma(u.email),
@@ -443,7 +448,13 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
         // 4. Registrar el turno (fuente de verdad del vínculo con la persona).
         //    - Paciente logueado -> se ata a su paciente.id (id_paciente).
         //    - Invitado          -> id_paciente NULL + manage_token para gestionarlo.
-        const idPaciente = esPacienteLogueado ? (req.session.user.idRole || null) : null;
+        //    Fase O: si el paciente tiene ficha en la clínica del turno, se ata a esa.
+        let idPaciente = null;
+        if (esPacienteLogueado) {
+            const fichas = await fichasPaciente(req.session.user.id);
+            const deLaClinica = fichas.find((f) => f.clinicaId === clinicaProf);
+            idPaciente = deLaClinica ? deLaClinica.paciente.id : (req.session.user.idRole || null);
+        }
 
         const profNombre = [prof.persona?.nombre, prof.persona?.apellido].filter(Boolean).join(' ') || null;
         const especialidad = prof.especialidad_profesional?.[0]?.especialidad?.nombre || null;

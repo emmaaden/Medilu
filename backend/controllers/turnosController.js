@@ -6,12 +6,15 @@
 // Dos accesos:
 //   - Paciente logueado: opera con getUserSupabase(req) (anon key + JWT), de modo
 //     que la RLS `turno_paciente_select/update` lo limita a SUS turnos (id_paciente).
+//     Fase O: además se filtra explícitamente por sus fichas (una por clínica): si la
+//     cuenta también es staff, la RLS de staff le dejaría ver los de su clínica.
 //   - Invitado: gestiona por token; acá se usa el service role (saltea RLS) y se
 //     filtra por el hash del token. Nunca se listan turnos por email (anti-enumeración).
 
 const { supabase } = require('../config/supabaseClient');
 const { getUserSupabase } = require('../middleware/userSupabase');
 const { hashToken } = require('../utils/turnoToken');
+const { misPacienteIds } = require('../utils/fichasPaciente');
 
 const ERR_SESION = { status: 401, body: { error: 'Tu sesión expiró. Iniciá sesión de nuevo.' } };
 
@@ -32,6 +35,7 @@ exports.misTurnos = async (req, res) => {
         const { data, error } = await db
             .from('turno')
             .select(SELECT_PACIENTE)
+            .in('id_paciente', await misPacienteIds(req.session.user.id))
             .order('inicio', { ascending: true });
         if (error) throw error;
 
@@ -54,6 +58,7 @@ exports.proximoTurno = async (req, res) => {
         const { data, error } = await db
             .from('turno')
             .select(SELECT_PACIENTE)
+            .in('id_paciente', await misPacienteIds(req.session.user.id))
             .eq('estado', 'reservado')
             .gte('inicio', new Date().toISOString())
             .order('inicio', { ascending: true })
@@ -85,6 +90,7 @@ exports.cancelarPropio = async (req, res) => {
             .from('turno')
             .select('id, estado')
             .eq('id', id)
+            .in('id_paciente', await misPacienteIds(req.session.user.id))
             .maybeSingle();
         if (error) throw error;
         if (!turno) return res.status(404).json({ error: 'Turno no encontrado.' });

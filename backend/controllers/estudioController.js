@@ -16,6 +16,7 @@
 const crypto = require('crypto');
 const { supabase } = require('../config/supabaseClient');       // service_role (storage / búsqueda)
 const { getUserSupabase } = require('../middleware/userSupabase'); // por-JWT (RLS de las tablas)
+const { misPacienteIds } = require('../utils/fichasPaciente');
 
 const BUCKET = 'estudios';
 const SIGNED_TTL = 120; // segundos de validez de la URL firmada
@@ -90,6 +91,9 @@ exports.listar = async (req, res) => {
                 'id, titulo, descripcion, categoria, fecha_estudio, archivo_mime, archivo_nombre, archivo_size, paciente_nombre, subido_en, ' +
                 'estudio_compartido ( id_profesional, profesional_nombre, compartido_en )'
             )
+            // Fase O: los de todas sus fichas, y solo los propios (la RLS también deja ver
+            // los compartidos con la cuenta si además es profesional).
+            .in('id_paciente', await misPacienteIds(req.session.user.id))
             .order('subido_en', { ascending: false });
         if (error) return res.status(400).json({ error: error.message });
 

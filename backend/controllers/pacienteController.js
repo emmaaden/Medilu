@@ -93,14 +93,14 @@ function fmtFecha(iso) {
 
 // Datos del profesional autenticado (nombre + área) tomados de la sesión.
 async function getProfContext(db, session) {
-    const authId = session.user.id;      // persona.id_auth
-    const idRole = session.user.idRole;  // profesional.id
+    const personaId = session.user.personaId; // persona de staff (Fase O: no por id_auth,
+    const idRole = session.user.idRole;       // que puede tener además fichas de paciente)
 
     let nombre = '';
     const { data: per } = await db
         .from('persona')
         .select('nombre, apellido')
-        .eq('id_auth', authId)
+        .eq('id', personaId)
         .maybeSingle();
     if (per) nombre = [per.nombre, per.apellido].filter(Boolean).join(' ');
 
@@ -186,10 +186,15 @@ exports.regisPacient = async (req, res) => {
         // ¿Ya existe una persona con ese DNI EN ESTA CLÍNICA?
         const { data: existente } = await db
             .from('persona')
-            .select('id')
+            .select('id, id_auth, nombre, apellido, email, paciente(id)')
             .eq('dni', dni)
             .eq('clinica_id', prof.clinicaId)
             .maybeSingle();
+        // Fase O: es alguien del equipo de la clínica (persona sin ficha de paciente):
+        // se le agrega la ficha a esa misma persona en vez de duplicarla.
+        if (existente && !(existente.paciente && existente.paciente[0])) {
+            return await sumarPersonaDeLaClinica(req, res, db, prof, cob, cod, existente);
+        }
         if (existente) {
             return res.status(409).json({
                 error: 'Ya existe un paciente con ese DNI en tu clínica.',
@@ -261,6 +266,52 @@ exports.regisPacient = async (req, res) => {
         return res.status(500).json({ error: err.message || 'Error al registrar el paciente.' });
     }
 };
+
+// Fase O: la persona ya es de la clínica (alguien del equipo) pero no tiene ficha de
+// paciente: se le crea la ficha y la primera consulta. Si tiene cuenta, la ve entrando
+// con su perfil de paciente (se le avisa); si no, se le crea como a cualquier paciente.
+async function sumarPersonaDeLaClinica(req, res, db, prof, cob, cod, persona) {
+    const { obraSocial } = req.body;
+    const { data: paciente, error: pacienteError } = await db
+        .from('paciente')
+        .insert({ id_persona: persona.id, obra_social: obraSocial || null, ...cob.cols })
+        .select('id')
+        .single();
+    if (pacienteError) throw pacienteError;
+
+    const idRegistro = await insertRegistro(db, paciente.id, prof, req.body, cod);
+    const nombre = [persona.nombre, persona.apellido].filter(Boolean).join(' ');
+
+    await registrarAcceso(req, {
+        accion: 'registrar_paciente',
+        idPaciente: paciente.id,
+        idRegistro,
+        paciente: { nombre, dni: req.body.dni },
+    });
+
+    let cuenta;
+    if (persona.id_auth) {
+        let mailEnviado = false;
+        try {
+            const { data } = await supabase.auth.admin.getUserById(persona.id_auth);
+            const email = data && data.user && data.user.email;
+            if (email) {
+                mailEnviado = await avisarVinculacion({
+                    email, nombre: persona.nombre, clinica: await nombreClinica(prof.clinicaId),
+                });
+            }
+        } catch (e) {
+            console.error('No se pudo avisar la vinculación al paciente:', e.message);
+        }
+        cuenta = { estado: 'vinculada', mailEnviado };
+    } else {
+        cuenta = await crearCuentaPaciente({
+            personaId: persona.id, email: req.body.email || persona.email, nombre, clinicaId: prof.clinicaId,
+        });
+    }
+
+    return res.status(201).json({ message: 'Paciente registrado con éxito', id_paciente: paciente.id, cuenta });
+}
 
 // Suma a la clínica a un paciente que ya tenía cuenta propia (se registró solo):
 // se le asigna la clínica, se completan los datos que le faltaban (sin pisar los
