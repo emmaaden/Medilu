@@ -19,6 +19,7 @@ const { registrarAcceso } = require('../utils/bitacora');
 const { columnasCobertura } = require('../utils/cobertura');
 const { supabase } = require('../config/supabaseClient');
 const { crearCuentaPaciente, buscarAutoregistrado, avisarVinculacion, nombreClinica } = require('../utils/cuentaPaciente');
+const { puedeSumarFicha } = require('../utils/membresias');
 const {
     prepararCodificacion,
     insertarCodificacion,
@@ -193,6 +194,14 @@ exports.regisPacient = async (req, res) => {
         // Fase O: es alguien del equipo de la clínica (persona sin ficha de paciente):
         // se le agrega la ficha a esa misma persona en vez de duplicarla.
         if (existente && !(existente.paciente && existente.paciente[0])) {
+            // Solo si es del equipo o no tiene cuenta (auditoría 2026-10-15, #2): si no,
+            // la HC del paciente quedaría atada a la cuenta de otra persona.
+            if (!(await puedeSumarFicha(supabase, existente, prof.clinicaId))) {
+                return res.status(409).json({
+                    error: 'Ya hay una persona con ese DNI en tu clínica que no es paciente ni del equipo. Escribinos a soporte para revisarlo.',
+                    code: 'DNI_EN_REVISION',
+                });
+            }
             return await sumarPersonaDeLaClinica(req, res, db, prof, cob, cod, existente);
         }
         if (existente) {

@@ -14,6 +14,7 @@
 const { supabase } = require('../config/supabaseClient');
 const { filasParaRegistro, serializarDiente } = require('../utils/odontograma');
 const { registrarAcceso } = require('../utils/bitacora');
+const { puedeSumarFicha } = require('../utils/membresias');
 const { serializarCodificacion, SELECT_CODIFICACION } = require('../utils/codificacion');
 
 const FORMATO = 'medilu.hc';
@@ -283,7 +284,7 @@ exports.importar = async (req, res) => {
                 // 1. Resolver o crear el paciente por DNI dentro de la clínica.
                 const { data: personaEx, error: persErr } = await supabase
                     .from('persona')
-                    .select('id, paciente ( id )')
+                    .select('id, id_auth, paciente ( id )')
                     .eq('clinica_id', clinicaId)
                     .eq('dni', dni)
                     .maybeSingle();
@@ -295,7 +296,12 @@ exports.importar = async (req, res) => {
                     if (pac?.id) {
                         pacienteId = pac.id;
                     } else {
-                        // persona existe pero no es paciente: crear su fila paciente.
+                        // persona existe pero no es paciente: crear su fila paciente, solo si
+                        // es del equipo o no tiene cuenta (auditoría 2026-10-15, #2).
+                        if (!(await puedeSumarFicha(supabase, personaEx, clinicaId))) {
+                            resumen.errores.push(`DNI ${dni}: ya hay una persona con ese DNI en la clínica que no es paciente ni del equipo; se omitió (escribinos a soporte).`);
+                            continue;
+                        }
                         const { data: nuevoPac, error: e } = await supabase
                             .from('paciente').insert({ id_persona: personaEx.id, ...coberturaImportada(p, catalogoOS) })
                             .select('id').single();

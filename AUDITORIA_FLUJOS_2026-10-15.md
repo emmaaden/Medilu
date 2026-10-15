@@ -234,7 +234,8 @@ INSERT para miembros). Hoy lo frena que los paths llevan UUID, pero un paciente 
 
 | Extra | ✅ Sesiones en Postgres (2026-10-15) | Antes no había `DATABASE_URL` y las sesiones vivían en memoria (se perdían en cada reinicio). `faseS_sesiones.sql` (aplicada): tabla `sesiones.session` en un esquema que la API de Supabase no publica, con un rol `medilu_sesiones` que solo accede a esa tabla. Verificado en local: el backend ya guarda sesiones ahí. Falta la misma `DATABASE_URL` en el hosting. |
 
-Defensa en profundidad pendiente para el #2 (código): en `regisPacient` e `importar`, tratar una persona existente sin ficha como "del equipo" solo si tiene membresía activa en la clínica.
+| Extra #2 | 🟡 Código corregido en `dev` (sin desplegar) | Defensa en profundidad: en `regisPacient` e `importar`, a una persona de la clínica sin ficha se le suma la ficha solo si no tiene cuenta o tiene membresía activa en la clínica (`puedeSumarFicha`). Con cuenta y sin membresía: 409 `DNI_EN_REVISION` en el alta, y se omite en el import. |
+| Extra #12 | ✅ Aplicado (2026-10-15) | `faseT_revoke_anon_funcion.sql`: `app_current_paciente_id()` ya no la ejecutan `anon` ni `PUBLIC` (verificado). Se sacaron las dependencias sin uso `googleapis` y `twilio` (60 paquetes). |
 
 ## Orden sugerido
 
