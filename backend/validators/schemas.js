@@ -95,6 +95,9 @@ module.exports = {
         unirseClinica: z.object({
             codigo: z.string().trim().min(1, 'Ingresá el código de activación').max(40),
         }),
+        crearConsultorio: z.object({
+            nombre: z.string().trim().min(2, 'Ingresá el nombre del consultorio').max(120),
+        }),
         selectPerfil: z.object({
             perfil: z.enum(['staff', 'paciente'], 'Perfil inválido'),
         }),

@@ -29,6 +29,28 @@ function urlBase(req) {
     return (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
 }
 
+// Inserta una clínica nueva con un slug único (para su URL pública de turnos) y
+// devuelve su id. Si el slug ya existe, reintenta con un sufijo aleatorio.
+async function insertarClinica(nombre) {
+    const nombreLimpio = String(nombre).trim();
+    const base = slugify(nombreLimpio);
+    let slug = base;
+    let cli = null, cliErr = null;
+    for (let intento = 0; intento < 5; intento++) {
+        ({ data: cli, error: cliErr } = await supabase
+            .from("clinica")
+            .insert([{ nombre: nombreLimpio, slug }])
+            .select("id")
+            .single());
+        if (!cliErr) break;
+        if (cliErr.code !== '23505') throw cliErr; // 23505 = unique_violation
+        slug = `${base}-${Math.random().toString(36).slice(2, 6)}`;
+        cli = null;
+    }
+    if (!cli) throw cliErr || new Error('No se pudo crear la clínica');
+    return cli.id;
+}
+
 exports.register = async (req, res) => {
     const {
         email, password, activationCode, nombreClinica,
@@ -187,26 +209,9 @@ exports.register = async (req, res) => {
 
         // Crear la clínica nueva (vía b) una vez confirmado el usuario.
         if (role === "PROFESIONAL" && !clinicaId && tieneNombreClinica) {
-            const nombreLimpio = String(nombreClinica).trim();
-            const base = slugify(nombreLimpio);
-            let slug = base;
-            let cli = null, cliErr = null;
-            // Reintentar con sufijo aleatorio si el slug ya existe (unique).
-            for (let intento = 0; intento < 5; intento++) {
-                ({ data: cli, error: cliErr } = await supabase
-                    .from("clinica")
-                    .insert([{ nombre: nombreLimpio, slug }])
-                    .select("id")
-                    .single());
-                if (!cliErr) break;
-                if (cliErr.code !== '23505') throw cliErr; // 23505 = unique_violation
-                slug = `${base}-${Math.random().toString(36).slice(2, 6)}`;
-                cli = null;
-            }
-            if (!cli) throw cliErr || new Error('No se pudo crear la clínica');
-            clinicaId = cli.id;
+            clinicaId = await insertarClinica(nombreClinica);
             esAdmin = true;
-            const clinicaNueva = cli.id;
+            const clinicaNueva = clinicaId;
             deshacer.push(() => supabase.from("clinica").delete().eq("id", clinicaNueva));
             // Fase L: toda clínica nueva arranca con la prueba del plan completo.
             deshacer.push(() => supabase.from("suscripcion").delete().eq("clinica_id", clinicaNueva));
@@ -643,6 +648,54 @@ exports.unirseClinica = async (req, res) => {
     } catch (err) {
         console.error('Error en unirse-clinica:', err);
         return res.status(500).json({ error: 'No se pudo sumar a la clínica.' });
+    }
+};
+
+// Fase U — Un profesional YA registrado crea su propio consultorio (una clínica de la
+// que queda como admin), con la prueba de DIAS_PRUEBA días como cualquier clínica
+// nueva. Lo paga él; no afecta a las clínicas donde ya atiende.
+// Una sola prueba por cuenta: si ya administra (o administró) una clínica, no puede
+// crear otra desde acá (evita encadenar pruebas gratis).
+exports.crearConsultorio = async (req, res) => {
+    const deshacer = [];
+    try {
+        const { personaId, idRole } = req.session.user;
+        if (!personaId || !idRole) return res.status(403).json({ error: 'Solo un profesional puede crear su consultorio.' });
+
+        const { data: admin, error: admErr } = await supabase
+            .from('membresia')
+            .select('id, clinica:clinica_id ( nombre )')
+            .eq('id_persona', personaId)
+            .eq('rol', 'admin')
+            .limit(1);
+        if (admErr) throw admErr;
+        if (admin && admin.length > 0) {
+            const nombre = admin[0].clinica?.nombre;
+            return res.status(409).json({
+                error: `Ya administrás ${nombre ? `«${nombre}»` : 'una clínica'}: no podés crear otro consultorio con una prueba nueva. Escribinos si necesitás uno aparte.`,
+            });
+        }
+
+        const clinicaId = await insertarClinica(req.body.nombre);
+        deshacer.push(() => supabase.from('clinica').delete().eq('id', clinicaId));
+        deshacer.push(() => supabase.from('suscripcion').delete().eq('clinica_id', clinicaId));
+        await planes.crearPrueba(clinicaId);
+
+        const { error: memErr } = await supabase
+            .from('membresia')
+            .insert([{ id_persona: personaId, clinica_id: clinicaId, rol: 'admin', activo: true }]);
+        if (memErr) throw memErr;
+
+        return res.json({
+            message: 'Consultorio creado',
+            clinica: { clinicaId, nombre: String(req.body.nombre).trim(), rol: 'admin' },
+        });
+    } catch (err) {
+        console.error('Error en crear-consultorio:', err);
+        for (const paso of deshacer.reverse()) {
+            try { await paso(); } catch (e) { console.error('crear-consultorio: no se pudo deshacer un paso:', e.message); }
+        }
+        return res.status(500).json({ error: 'No se pudo crear el consultorio.' });
     }
 };
 
