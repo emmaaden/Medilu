@@ -11,6 +11,7 @@ import {
   FileText,
   FileCheck2,
   FolderHeart,
+  Stethoscope,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/dialog"
 import { api, ApiError } from "@/lib/api"
 import { useUser } from "@/hooks/useUser"
+import { cambiarPerfil } from "@/lib/perfil"
 
 type Turno = {
   id: number
@@ -77,8 +79,20 @@ export default function MisTurnos() {
       </div>
     )
   }
+  // Fase O: cuenta del equipo que además es paciente, sin perfil elegido todavía.
+  if (user?.needsProfileSelection) {
+    return <Navigate to="/elegir-perfil" replace />
+  }
   if (!user || !esPaciente) {
     return <Navigate to="/login" replace />
+  }
+
+  async function irAlPanel() {
+    try {
+      window.location.assign(await cambiarPerfil("staff"))
+    } catch {
+      toast.error("No se pudo cambiar de perfil.")
+    }
   }
 
   const ahora = Date.now()
@@ -157,6 +171,11 @@ export default function MisTurnos() {
                     <FolderHeart /> Mis estudios
                   </Link>
                 </Button>
+                {user.perfiles?.includes("staff") && (
+                  <Button variant="outline" size="sm" onClick={irAlPanel}>
+                    <Stethoscope /> Ir a mi panel de trabajo
+                  </Button>
+                )}
                 <Button asChild size="sm" className="sm:ml-auto">
                   <Link to="/turnos">
                     <CalendarPlus /> Pedir turno

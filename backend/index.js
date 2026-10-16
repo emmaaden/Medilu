@@ -33,14 +33,19 @@ const pagoRoutes = require('./routes/pagoRoutes'); // Fase M: suscripción de la
 // (los guards de auth se aplican en cada router; el dashboard pasó al SPA)
 const { supabase } = require('./config/supabaseClient');
 const { getMembresiasActivas } = require('./utils/membresias');
+const { fichasPaciente } = require('./utils/fichasPaciente'); // Fase O
 const { generarTokenGestion } = require('./utils/turnoToken');
 const { sendMail, isMailerConfigured } = require('./utils/mailer');
-const { slotsDisponibles, estaLibre } = require('./utils/disponibilidad');
+const { mailTurno } = require('./utils/mailTurno');
+const {
+    franjasDeFecha, slotsDisponibles, validarHorarioTurno, estaLibre, esSolapeTurno,
+} = require('./utils/disponibilidad');
 const { turnosOnlineApagados } = require('./utils/turnosOnline'); // Fase N2
 const { validate } = require('./middleware/validate');
 const schemas = require('./validators/schemas');
 const planes = require('./utils/planes');
 const { soloLectura } = require('./middleware/plan');
+const { sesionVigente } = require('./middleware/sesionVigente');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -132,7 +137,11 @@ app.use(cors((req, cb) => {
     return cb(null, { origin: false }); // origen no permitido: el navegador lo bloquea
 }));
 
-app.use(express.json());
+// JSON con el límite por defecto (100 KB), salvo el import de HC, que trae su propio
+// parser de 20 MB (routes/hcRoutes.js): si este lo leía primero, todo archivo de más
+// de 100 KB daba 413 antes de llegar a la ruta.
+const jsonParser = express.json();
+app.use((req, res, next) => (req.path === '/hc/import' ? next() : jsonParser(req, res, next)));
 app.use(express.urlencoded({ extended: true }));
 
 // Rate limiting general. El limiter estricto de login/register vive en routes/authRoutes.js.
@@ -152,16 +161,33 @@ const createEventLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
 // ---------------------------------------------------------------------------
 // Sesiones
 // ---------------------------------------------------------------------------
+// En producción no se arranca sin SESSION_SECRET: con el valor por defecto (público en
+// el repo) cualquiera podría firmar cookies de sesión válidas (auditoría 2026-10-15, #12).
 if (!process.env.SESSION_SECRET) {
+    if (isProd) {
+        console.error('⛔ SESSION_SECRET no está definido: el servidor no arranca en producción sin él.');
+        process.exit(1);
+    }
     console.warn('⚠️  SESSION_SECRET no está definido en .env');
+}
+
+// Sin MP_WEBHOOK_SECRET los webhooks de Mercado Pago no se validan por firma (igual se
+// re-consulta cada recurso en MP, pero la firma evita procesar avisos falsos).
+if (isProd && process.env.MP_ACCESS_TOKEN && !process.env.MP_WEBHOOK_SECRET) {
+    console.warn('⚠️  MP_WEBHOOK_SECRET no está definido: los webhooks de Mercado Pago no se validan por firma.');
 }
 
 let sessionStore; // undefined => MemoryStore (solo desarrollo)
 if (process.env.DATABASE_URL) {
     const pgSession = require('connect-pg-simple')(session);
+    // Tabla en el esquema `sesiones` (no expuesto por la API de Supabase), creada por
+    // db/faseS_sesiones.sql. DATABASE_URL usa el rol medilu_sesiones, que solo puede
+    // leer y escribir esa tabla (no crearla).
     sessionStore = new pgSession({
         conString: process.env.DATABASE_URL,
-        createTableIfMissing: true
+        schemaName: 'sesiones',
+        tableName: 'session',
+        createTableIfMissing: false
     });
 } else {
     console.warn('⚠️  DATABASE_URL no configurada: usando MemoryStore (no apto para producción).');
@@ -179,6 +205,10 @@ app.use(session({
         sameSite: 'lax'
     }
 }));
+
+// Auditoría 2026-10-15 (#7): la sesión del staff se revalida contra sus membresías
+// (baja o cambio de rol se aplican sin esperar a que venza la cookie).
+app.use(sesionVigente);
 
 // ---------------------------------------------------------------------------
 // Estáticos y rutas
@@ -247,13 +277,13 @@ app.get('/api/user', async (req, res) => {
     const u = req.session.user;
 
     // Nombre completo desde persona (para dashboards). Best-effort: no bloquea si falla.
+    // Fase O: una cuenta puede tener varias personas (una por clínica): se usa la de la
+    // sesión (staff, o la ficha principal del paciente).
     let fullName = null;
     try {
-        const { data } = await supabase
-            .from('persona')
-            .select('nombre, apellido')
-            .eq('id_auth', u.id)
-            .maybeSingle();
+        const { data } = u.personaId
+            ? await supabase.from('persona').select('nombre, apellido').eq('id', u.personaId).maybeSingle()
+            : { data: null };
         if (data) fullName = [data.nombre, data.apellido].filter(Boolean).join(' ');
     } catch (err) {
         console.error('Error obteniendo nombre en /api/user:', err.message);
@@ -309,6 +339,10 @@ app.get('/api/user', async (req, res) => {
         alcanceIdObraSocial: u.alcanceIdObraSocial || null,
         clinicas,
         needsClinicSelection,
+        // Fase O: perfiles de la cuenta (staff y/o paciente). Con los dos y sin elegir
+        // todavía (role null), el cliente muestra el selector de perfil.
+        perfiles: u.perfiles || [],
+        needsProfileSelection: !u.role && (u.perfiles || []).length > 1,
         plan,
         // Fase L: equipo de la plataforma (activa planes y edita precios).
         esPlataforma: planes.esAdminPlataforma(u.email),
@@ -324,21 +358,6 @@ app.get('/api/user', async (req, res) => {
 // Turnos (Fase F): la disponibilidad se calcula contra la base (utils/disponibilidad),
 // no contra Google Calendar. La lógica de slots/solapamiento vive en ese módulo.
 // ---------------------------------------------------------------------------
-
-// Escapa texto para interpolarlo de forma segura dentro de HTML (emails).
-function escapeHtml(s) {
-    return String(s || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-// Normaliza un nombre de día (minúsculas, sin acentos) para comparar.
-function normalizarDia(s) {
-    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-}
 
 // Franjas horarias disponibles de un profesional para una fecha dada.
 // Respeta horario_profesional (por día de la semana) y excluye los eventos ya
@@ -358,11 +377,7 @@ app.get('/available-slots', validate(schemas.calendar.availableSlots, 'query'), 
         if (!prof) return res.status(404).json({ error: 'Profesional no encontrado' });
 
         // 2. Franjas del día de la semana pedido.
-        const diaSemana = normalizarDia(
-            new Date(`${date}T12:00:00-03:00`)
-                .toLocaleDateString('es-AR', { weekday: 'long', timeZone: 'America/Argentina/Buenos_Aires' })
-        );
-        const franjas = (prof.horario_profesional || []).filter(h => normalizarDia(h.dia) === diaSemana);
+        const franjas = franjasDeFecha(prof.horario_profesional, date);
         if (franjas.length === 0) return res.json([]); // no atiende ese día
 
         // 3. Slots libres = franjas − turnos reservados − bloqueos (Fase F, contra la base).
@@ -380,7 +395,7 @@ app.get('/available-slots', validate(schemas.calendar.availableSlots, 'query'), 
 // horario ya está reservado o bloqueado, se rechaza. Si la reserva viene de la página
 // de una clínica (?clinica=<slug>), el profesional debe pertenecer a ella (Fase 2).
 app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEvent), async (req, res) => {
-    const { summary, start, end, email, number, numberCode, profId, clinica, name } = req.body;
+    const { start, end, email, number, numberCode, profId, clinica, name } = req.body;
 
     // Consentimiento expreso del invitado (Ley 25.326): el turno revela datos de salud
     // (especialidad/profesional) y se aloja en servidores fuera del país. El paciente
@@ -441,15 +456,26 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
             }
         }
 
-        // 3. Verificar que el horario siga libre (turnos reservados + bloqueos).
+        // 3. El horario tiene que ser uno de los slots que ofrece la página: 30', futuro
+        //    y dentro de la atención del profesional (auditoría 2026-10-15, #3).
+        const invalido = await validarHorarioTurno(profId, start.dateTime, end.dateTime);
+        if (invalido) return res.status(invalido.status).json({ error: invalido.error });
+
+        // 4. Verificar que el horario siga libre (turnos reservados + bloqueos).
         if (!(await estaLibre(profId, start.dateTime, end.dateTime))) {
             return res.status(409).json({ error: 'Ese horario ya no está disponible. Elegí otro.' });
         }
 
-        // 4. Registrar el turno (fuente de verdad del vínculo con la persona).
+        // 5. Registrar el turno (fuente de verdad del vínculo con la persona).
         //    - Paciente logueado -> se ata a su paciente.id (id_paciente).
         //    - Invitado          -> id_paciente NULL + manage_token para gestionarlo.
-        const idPaciente = esPacienteLogueado ? (req.session.user.idRole || null) : null;
+        //    Fase O: si el paciente tiene ficha en la clínica del turno, se ata a esa.
+        let idPaciente = null;
+        if (esPacienteLogueado) {
+            const fichas = await fichasPaciente(req.session.user.id);
+            const deLaClinica = fichas.find((f) => f.clinicaId === clinicaProf);
+            idPaciente = deLaClinica ? deLaClinica.paciente.id : (req.session.user.idRole || null);
+        }
 
         const profNombre = [prof.persona?.nombre, prof.persona?.apellido].filter(Boolean).join(' ') || null;
         const especialidad = prof.especialidad_profesional?.[0]?.especialidad?.nombre || null;
@@ -474,27 +500,26 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
         }
 
         const { error: insError } = await supabase.from('turno').insert(turnoRow);
+        // Otra reserva ganó el mismo horario entre el chequeo y el insert (Fase Q).
+        if (esSolapeTurno(insError)) {
+            return res.status(409).json({ error: 'Ese horario ya no está disponible. Elegí otro.' });
+        }
         if (insError) throw insError;
 
-        // 5. Email de confirmación (best-effort: no bloquea la reserva).
-        const fechaLocal = new Date(start.dateTime).toLocaleString('es-AR', {
-            timeZone: 'America/Argentina/Buenos_Aires',
-            dateStyle: 'full',
-            timeStyle: 'short',
-        });
-        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+        // 6. Email de confirmación (best-effort: no bloquea la reserva).
         // Enlace de gestión: los invitados reciben su token; los logueados van a "Mis turnos".
-        const gestionHtml = manageToken
-            ? `<p>Para ver o cancelar este turno, entrá a <a href="${baseUrl}/gestionar-turno?token=${manageToken}">este enlace</a>. Guardalo: es personal.</p>`
-            : `<p>Podés ver o cancelar tus turnos desde <a href="${baseUrl}/mis-turnos">Mis turnos</a>.</p>`;
-        const gestionText = manageToken
-            ? `Para ver o cancelar este turno: ${baseUrl}/gestionar-turno?token=${manageToken}`
-            : `Ver o cancelar tus turnos: ${baseUrl}/mis-turnos`;
         sendMail({
             to: email,
-            subject: 'Confirmación de tu turno - Medilu',
-            text: `Hola,\n\nTu turno fue agendado para el ${fechaLocal} hs.\n${summary || ''}\n\n${gestionText}\n\nGracias por usar Medilu.`,
-            html: `<p>Hola,</p><p>Tu turno fue <strong>agendado</strong> para el <strong>${fechaLocal} hs</strong>.</p><p>${escapeHtml(summary)}</p>${gestionHtml}<p>Gracias por usar Medilu.</p>`,
+            ...mailTurno({
+                tipo: 'confirmacion',
+                nombre: name,
+                inicio: start.dateTime,
+                profesional: profNombre,
+                especialidad,
+                baseUrl: process.env.APP_URL || `${req.protocol}://${req.get('host')}`,
+                manageToken,
+                misTurnos: 'boton',
+            }),
         }).catch(err => console.error('Error enviando email de confirmación:', err.message));
 
         res.json({ success: true });
@@ -530,7 +555,7 @@ async function sendUpcomingReminders() {
 
     const { data: turnos, error } = await supabase
         .from('turno')
-        .select('id, inicio, paciente_email, paciente_nombre, profesional_nombre, especialidad')
+        .select('id, inicio, id_paciente, paciente_email, paciente_nombre, profesional_nombre, especialidad')
         .eq('estado', 'reservado')
         .eq('recordatorio_enviado', false)
         .gte('inicio', desde.toISOString())
@@ -541,20 +566,18 @@ async function sendUpcomingReminders() {
     for (const t of turnos || []) {
         if (!t.paciente_email) continue;
 
-        const fechaLocal = new Date(t.inicio).toLocaleString('es-AR', {
-            timeZone: 'America/Argentina/Buenos_Aires',
-            dateStyle: 'full',
-            timeStyle: 'short',
-        });
-        const con = t.profesional_nombre ? ` con ${t.profesional_nombre}` : '';
-        const esp = t.especialidad ? ` (${t.especialidad})` : '';
-
         try {
             await sendMail({
                 to: t.paciente_email,
-                subject: 'Recordatorio de tu turno - Medilu',
-                text: `Hola,\n\nTe recordamos tu turno${con}${esp} para el ${fechaLocal} hs.\n\nMedilu.`,
-                html: `<p>Hola,</p><p>Te recordamos tu turno${con}${esp} para el <strong>${fechaLocal} hs</strong>.</p><p>Medilu.</p>`,
+                ...mailTurno({
+                    tipo: 'recordatorio',
+                    nombre: t.paciente_nombre,
+                    inicio: t.inicio,
+                    profesional: t.profesional_nombre,
+                    especialidad: t.especialidad,
+                    baseUrl: process.env.APP_URL,
+                    misTurnos: t.id_paciente ? 'link' : null,
+                }),
             });
             await supabase.from('turno').update({ recordatorio_enviado: true }).eq('id', t.id);
             sent++;
@@ -579,7 +602,7 @@ app.post('/internal/send-reminders', async (req, res) => {
         res.json({ ok: true, ...result });
     } catch (error) {
         console.error('Error en send-reminders:', error.message);
-        res.status(500).json({ error: 'Error al enviar recordatorios', details: error.message });
+        res.status(500).json({ error: 'Error al enviar recordatorios' });
     }
 });
 

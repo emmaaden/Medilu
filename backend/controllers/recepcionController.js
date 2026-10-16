@@ -11,7 +11,8 @@
 const { supabase } = require('../config/supabaseClient');
 const { generarTokenGestion } = require('../utils/turnoToken');
 const { sendMail } = require('../utils/mailer');
-const { estaLibre } = require('../utils/disponibilidad');
+const { mailTurno } = require('../utils/mailTurno');
+const { validarHorarioTurno, estaLibre, esSolapeTurno } = require('../utils/disponibilidad');
 
 // Campos del turno que se devuelven al panel del staff.
 const SELECT_STAFF = `
@@ -59,14 +60,6 @@ function instanteValido(v) {
 
 function idValido(v) {
     return v != null && /^\d+$/.test(String(v)) ? String(v) : null;
-}
-
-function fechaLocal(iso) {
-    return new Date(iso).toLocaleString('es-AR', {
-        timeZone: 'America/Argentina/Buenos_Aires',
-        dateStyle: 'full',
-        timeStyle: 'short',
-    });
 }
 
 // ---------------------------------------------------------------------------
@@ -205,43 +198,30 @@ exports.listarProfesionales = async (req, res) => {
 };
 
 // Envía el email de confirmación/actualización de un turno (best-effort).
-function enviarEmailTurno({ req, tipo, email, inicio, profesionalNombre, especialidad, manageToken }) {
+// Si el turno es de una ficha (idPaciente), se menciona "Mis turnos" como link: la
+// ficha puede o no tener cuenta de Medilu.
+function enviarEmailTurno({ req, tipo, email, nombre, inicio, profesionalNombre, especialidad, manageToken, idPaciente }) {
     if (!email) return;
-    const fecha = fechaLocal(inicio);
-    const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-    const con = profesionalNombre ? ` con ${profesionalNombre}` : '';
-    const esp = especialidad ? ` (${especialidad})` : '';
-
-    const asuntos = {
-        confirmacion: 'Confirmación de tu turno - Medilu',
-        reprogramacion: 'Tu turno fue reprogramado - Medilu',
-        cancelacion: 'Tu turno fue cancelado - Medilu',
-    };
-    const encabezados = {
-        confirmacion: `Tu turno${con}${esp} quedó <strong>agendado</strong> para el <strong>${fecha} hs</strong>.`,
-        reprogramacion: `Tu turno${con}${esp} fue <strong>reprogramado</strong> para el <strong>${fecha} hs</strong>.`,
-        cancelacion: `Tu turno${con}${esp} del <strong>${fecha} hs</strong> fue <strong>cancelado</strong>.`,
-    };
-
-    const gestion = manageToken
-        ? `<p>Para ver o cancelar este turno, entrá a <a href="${baseUrl}/gestionar-turno?token=${manageToken}">este enlace</a>. Guardalo: es personal.</p>`
-        : '';
-    const gestionText = manageToken
-        ? `\nVer o cancelar: ${baseUrl}/gestionar-turno?token=${manageToken}`
-        : '';
-
     sendMail({
         to: email,
-        subject: asuntos[tipo],
-        text: `Hola,\n\n${encabezados[tipo].replace(/<[^>]+>/g, '')}${gestionText}\n\nMedilu.`,
-        html: `<p>Hola,</p><p>${encabezados[tipo]}</p>${gestion}<p>Gracias por usar Medilu.</p>`,
+        ...mailTurno({
+            tipo,
+            nombre,
+            inicio,
+            profesional: profesionalNombre,
+            especialidad,
+            baseUrl: process.env.APP_URL || `${req.protocol}://${req.get('host')}`,
+            manageToken,
+            misTurnos: idPaciente ? 'link' : null,
+        }),
     }).catch((e) => console.error('Error enviando email de turno:', e.message));
 }
 
 // ---------------------------------------------------------------------------
 // POST /staff/turnos  { profId, start, end, nombre, email, telefono?, dni? }
-// Crea un turno para un paciente. Valida que el profesional sea de la clínica activa
-// y que el horario siga libre (turnos reservados + bloqueos).
+// Crea un turno para un paciente. Valida que el profesional sea de la clínica activa,
+// que el horario sea un slot válido (30', futuro, dentro de la atención: lo mismo que
+// ofrece el panel) y que siga libre (turnos reservados + bloqueos).
 // ---------------------------------------------------------------------------
 exports.crearTurno = async (req, res) => {
     try {
@@ -266,7 +246,9 @@ exports.crearTurno = async (req, res) => {
         const profNombre = [prof.persona?.nombre, prof.persona?.apellido].filter(Boolean).join(' ') || null;
         const especialidad = prof.especialidad_profesional?.[0]?.especialidad?.nombre || null;
 
-        // 2. Verificar que el horario siga libre (turnos reservados + bloqueos).
+        // 2. Horario válido (auditoría 2026-10-15, #3) y libre (turnos reservados + bloqueos).
+        const invalido = await validarHorarioTurno(profId, start.dateTime, end.dateTime);
+        if (invalido) return res.status(invalido.status).json({ error: invalido.error });
         if (!(await estaLibre(profId, start.dateTime, end.dateTime))) {
             return res.status(409).json({ error: 'Ese horario no está disponible (ocupado o bloqueado).' });
         }
@@ -310,12 +292,15 @@ exports.crearTurno = async (req, res) => {
             .insert(turnoRow)
             .select(SELECT_STAFF)
             .single();
+        if (esSolapeTurno(insErr)) {
+            return res.status(409).json({ error: 'Ese horario no está disponible (ocupado o bloqueado).' });
+        }
         if (insErr) throw insErr;
 
         // 5. Email de confirmación (best-effort).
         enviarEmailTurno({
-            req, tipo: 'confirmacion', email,
-            inicio: start.dateTime, profesionalNombre: profNombre, especialidad, manageToken,
+            req, tipo: 'confirmacion', email, nombre,
+            inicio: start.dateTime, profesionalNombre: profNombre, especialidad, manageToken, idPaciente,
         });
 
         return res.status(201).json({ message: 'Turno creado', turno: mapTurno(creado) });
@@ -329,7 +314,7 @@ exports.crearTurno = async (req, res) => {
 async function cargarTurnoDeClinica(id, clinicaId) {
     const { data, error } = await supabase
         .from('turno')
-        .select('id, estado, inicio, fin, clinica_id, id_profesional, paciente_email, profesional_nombre, especialidad, id_paciente, manage_token_hash')
+        .select('id, estado, inicio, fin, clinica_id, id_profesional, paciente_nombre, paciente_email, profesional_nombre, especialidad, id_paciente, manage_token_hash')
         .eq('id', id)
         .eq('clinica_id', clinicaId)
         .maybeSingle();
@@ -363,8 +348,9 @@ exports.cancelarTurno = async (req, res) => {
         if (error) throw error;
 
         enviarEmailTurno({
-            req, tipo: 'cancelacion', email: turno.paciente_email,
+            req, tipo: 'cancelacion', email: turno.paciente_email, nombre: turno.paciente_nombre,
             inicio: turno.inicio, profesionalNombre: turno.profesional_nombre, especialidad: turno.especialidad,
+            idPaciente: turno.id_paciente,
         });
 
         return res.json({ message: 'Turno cancelado.' });
@@ -394,7 +380,9 @@ exports.reprogramarTurno = async (req, res) => {
             });
         }
 
-        // El nuevo horario debe estar libre (excluyendo este mismo turno).
+        // El nuevo horario debe ser un slot válido y estar libre (excluyendo este mismo turno).
+        const invalido = await validarHorarioTurno(turno.id_profesional, start.dateTime, end.dateTime);
+        if (invalido) return res.status(invalido.status).json({ error: invalido.error });
         if (!(await estaLibre(turno.id_profesional, start.dateTime, end.dateTime, id))) {
             return res.status(409).json({ error: 'Ese horario no está disponible (ocupado o bloqueado).' });
         }
@@ -406,11 +394,15 @@ exports.reprogramarTurno = async (req, res) => {
             .eq('clinica_id', clinicaId)
             .select(SELECT_STAFF)
             .single();
+        if (esSolapeTurno(error)) {
+            return res.status(409).json({ error: 'Ese horario no está disponible (ocupado o bloqueado).' });
+        }
         if (error) throw error;
 
         enviarEmailTurno({
-            req, tipo: 'reprogramacion', email: turno.paciente_email,
+            req, tipo: 'reprogramacion', email: turno.paciente_email, nombre: turno.paciente_nombre,
             inicio: start.dateTime, profesionalNombre: turno.profesional_nombre, especialidad: turno.especialidad,
+            idPaciente: turno.id_paciente,
         });
 
         return res.json({ message: 'Turno reprogramado.', turno: mapTurno(actualizado) });
@@ -439,8 +431,9 @@ exports.reenviarConfirmacion = async (req, res) => {
         }
 
         enviarEmailTurno({
-            req, tipo: 'confirmacion', email: turno.paciente_email,
+            req, tipo: 'confirmacion', email: turno.paciente_email, nombre: turno.paciente_nombre,
             inicio: turno.inicio, profesionalNombre: turno.profesional_nombre, especialidad: turno.especialidad,
+            idPaciente: turno.id_paciente,
         });
 
         return res.json({ message: 'Confirmación reenviada.' });

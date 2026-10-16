@@ -10,6 +10,8 @@ import { LOGO_PDF } from "@/lib/brandMark"
 import type { CodificacionRegistro } from "@/lib/catalogos"
 
 export type HistoryEntry = {
+  /** Fase O: clínica del registro (en la historia del paciente, que junta todas). */
+  clinica?: string
   profesional: string
   area: string
   fecha: string
@@ -22,6 +24,8 @@ export type HistoryEntry = {
   dientes?: Diente[]
   /** Fase K: estado de auditoría del registro (solo en la ficha del profesional). */
   auditoria?: string
+  /** Vino de otro sistema (import de HC): fecha y profesional son los del archivo. */
+  importado?: boolean
 } & CodificacionRegistro
 
 export type Paciente = {
@@ -37,8 +41,12 @@ export type Paciente = {
   idObraSocial?: number | null
   nroAfiliado?: string
   plan?: string
+  /** Si ya tiene cuenta para entrar a Medilu (si no, se le puede enviar el acceso). */
+  tieneCuenta?: boolean
   sexo: string
   fechaApertura: string
+  /** Fase O: clínicas donde el paciente tiene ficha (solo en "Mi historia"). */
+  clinicas?: string[]
   history: HistoryEntry[]
 }
 
@@ -140,7 +148,9 @@ export function downloadPatientHistoryPdf(p: Paciente) {
   }
 
   ;(p.history || []).forEach((entry) => {
+    if (entry.clinica) line(`Clínica: ${entry.clinica}`)
     line(`Profesional: ${entry.profesional}`)
+    if (entry.importado) line("Registro importado de otro sistema")
     line(`Área: ${entry.area}`)
     line(`Fecha: ${entry.fecha}hs`)
     line("")

@@ -52,4 +52,22 @@ function roleSinProfesional(membresias) {
     return membresias.every((m) => m.rol === 'auditor') ? 'auditor' : 'recepcion';
 }
 
-module.exports = { getMembresiasActivas, roleSinProfesional };
+// ¿Se le puede agregar la ficha de paciente a una persona de la clínica que no la tiene?
+// Sí si no tiene cuenta (una ficha sin vincular) o si es del equipo de la clínica
+// (membresía activa en ella). Una persona CON cuenta y SIN membresía no es del equipo:
+// es lo que dejaba una persona "plantada" con el DNI de un paciente para quedarse con
+// su HC (auditoría 2026-10-15, #2). `db` es un cliente service_role.
+async function puedeSumarFicha(db, persona, clinicaId) {
+    if (!persona.id_auth) return true;
+    const { data, error } = await db
+        .from('membresia')
+        .select('id')
+        .eq('id_persona', persona.id)
+        .eq('clinica_id', clinicaId)
+        .eq('activo', true)
+        .limit(1);
+    if (error) throw error;
+    return !!(data && data.length);
+}
+
+module.exports = { getMembresiasActivas, roleSinProfesional, puedeSumarFicha };

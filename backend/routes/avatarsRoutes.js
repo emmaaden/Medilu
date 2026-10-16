@@ -10,8 +10,10 @@ const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 2 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('image/')) return cb(null, true);
-        cb(new Error('Solo se permiten imágenes'));
+        // Solo formatos de mapa de bits: un SVG puede llevar scripts y el bucket de
+        // avatares es público (auditoría 2026-10-15, #12).
+        if (/^image\/(png|jpe?g|webp)$/.test(file.mimetype)) return cb(null, true);
+        cb(new Error('La foto tiene que ser PNG, JPG o WebP'));
     }
 });
 

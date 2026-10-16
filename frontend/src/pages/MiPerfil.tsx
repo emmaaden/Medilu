@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Field } from "@/components/form/Field"
 import { CoberturaFields } from "@/components/form/CoberturaFields"
+import { CambiarContrasena } from "@/components/form/CambiarContrasena"
 import { COBERTURA_VACIA, coberturaPayload, type Cobertura } from "@/lib/catalogos"
 import { Container, PageHero } from "@/components/site/Section"
 import { api, ApiError } from "@/lib/api"
@@ -242,6 +243,8 @@ export default function MiPerfil() {
               )}
             </CardContent>
           </Card>
+
+          <CambiarContrasena className="mt-6" />
         </div>
       </Container>
     </>

@@ -45,8 +45,8 @@ export const CARA_LABEL: Record<string, string> = {
 }
 
 export const ESTADO_COLOR: Record<Estado, string> = {
-  realizado: "#2563eb", // azul: ya realizado / existente
-  pendiente: "#dc2626", // rojo: a tratar / pendiente
+  realizado: "#dc2626", // rojo: ya realizado / existente (convención odontológica)
+  pendiente: "#2563eb", // azul: a tratar / pendiente
 }
 
 export const ESTADO_LABEL: Record<Estado, string> = {

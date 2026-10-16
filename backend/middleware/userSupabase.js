@@ -12,6 +12,15 @@ const { supabaseAnon, userClientFromToken } = require('../config/supabaseClient'
 
 const MARGEN_SEG = 60; // refrescar si vence en menos de 1 minuto
 
+// Vencimiento del access_token medido con el reloj de ESTE server (epoch en segundos).
+// No se usa expires_at tal cual: viene del reloj de Supabase, y si el del server está
+// corrido (p. ej. 3 h adelantado) todo token parece vencido, se refresca en cada
+// request y los refrescos en paralelo se pisan el refresh_token (401 intermitentes).
+function vencimientoLocal(session) {
+    if (session.expires_in) return Math.floor(Date.now() / 1000) + session.expires_in;
+    return session.expires_at;
+}
+
 async function getUserSupabase(req) {
     const sb = req.session && req.session.sb;
     if (!sb || !sb.accessToken || !sb.refreshToken) return null;
@@ -35,9 +44,9 @@ async function getUserSupabase(req) {
     req.session.sb = {
         accessToken: data.session.access_token,
         refreshToken: data.session.refresh_token,
-        expiresAt: data.session.expires_at,
+        expiresAt: vencimientoLocal(data.session),
     };
     return userClientFromToken(data.session.access_token, clinicaId);
 }
 
-module.exports = { getUserSupabase };
+module.exports = { getUserSupabase, vencimientoLocal };

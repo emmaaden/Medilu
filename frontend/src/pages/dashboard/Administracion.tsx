@@ -73,6 +73,8 @@ type Codigo = {
   id: number
   codigo: string
   usado: boolean
+  /** Sin usar y con más de 30 días: ya no sirve para registrarse. */
+  vencido?: boolean
   rol?: "profesional" | "recepcion" | "auditor"
   alcance_obra_social?: string | null
   creado_en?: string
@@ -423,11 +425,11 @@ export default function Administracion() {
                     ? ` · ${c.alcance_obra_social}`
                     : ""}
                 </Badge>
-                <Badge variant={c.usado ? "secondary" : "default"}>
-                  {c.usado ? "Usado" : "Disponible"}
+                <Badge variant={c.usado || c.vencido ? "secondary" : "default"}>
+                  {c.usado ? "Usado" : c.vencido ? "Vencido" : "Disponible"}
                 </Badge>
                 <div className="ml-auto flex items-center gap-1">
-                  {!c.usado && (
+                  {!c.usado && !c.vencido && (
                     <Button
                       variant="ghost"
                       size="icon"

@@ -134,7 +134,7 @@ exports.deleteHours = async (req, res) => {
             return res.status(400).json({ error: error.message });
         }
 
-        return res.status(200).json({ message: 'Horario borrado con exito' });
+        return res.status(200).json({ success: true, message: 'Horario borrado con exito' });
 
     } catch (err) {
         console.error("Error al borrar el horario:", err);

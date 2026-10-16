@@ -79,6 +79,10 @@ module.exports = {
         forgotPassword: z.object({
             email: z.email('Email inválido'),
         }),
+        cambiarContrasena: z.object({
+            actual: z.string().min(1, 'Ingresá tu contraseña actual').max(200),
+            nueva: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(200),
+        }),
         reenviarConfirmacion: z.object({
             email: z.email('Email inválido'),
         }),
@@ -87,6 +91,9 @@ module.exports = {
         }),
         selectClinica: z.object({
             clinicaId: z.uuid('Clínica inválida'),
+        }),
+        selectPerfil: z.object({
+            perfil: z.enum(['staff', 'paciente'], 'Perfil inválido'),
         }),
     },
 
@@ -126,16 +133,16 @@ module.exports = {
         }),
         crearTurno: z.object({
             profId: idFlexible,
-            start: z.object({ dateTime: z.string().min(1, 'Fecha/hora de inicio requerida') }),
-            end: z.object({ dateTime: z.string().min(1, 'Fecha/hora de fin requerida') }),
+            start: z.object({ dateTime: z.string().min(1, 'Fecha/hora de inicio requerida').max(40) }),
+            end: z.object({ dateTime: z.string().min(1, 'Fecha/hora de fin requerida').max(40) }),
             nombre: z.string().trim().min(1, 'Nombre del paciente requerido').max(120),
             email: z.email('Email inválido'),
             telefono: z.union([z.string().max(30), z.number()]).optional(),
             dni: z.string().trim().max(20).optional(),
         }),
         reprogramar: z.object({
-            start: z.object({ dateTime: z.string().min(1, 'Fecha/hora de inicio requerida') }),
-            end: z.object({ dateTime: z.string().min(1, 'Fecha/hora de fin requerida') }),
+            start: z.object({ dateTime: z.string().min(1, 'Fecha/hora de inicio requerida').max(40) }),
+            end: z.object({ dateTime: z.string().min(1, 'Fecha/hora de fin requerida').max(40) }),
         }),
         crearBloqueo: z.object({
             profId: idFlexible,
@@ -188,6 +195,10 @@ module.exports = {
         cobertura: z.object({ dni, ...cobertura }),
         getData: z.object({
             dni,
+        }),
+        enviarAcceso: z.object({
+            dni,
+            email: emailOpcional,
         }),
     },
 
@@ -251,8 +262,8 @@ module.exports = {
             profId: idFlexible,
             clinica: z.string().trim().max(60).optional(),
             calendarId: z.string().optional(),
-            start: z.object({ dateTime: z.string().min(1, 'Fecha/hora de inicio requerida') }),
-            end: z.object({ dateTime: z.string().min(1, 'Fecha/hora de fin requerida') }),
+            start: z.object({ dateTime: z.string().min(1, 'Fecha/hora de inicio requerida').max(40) }),
+            end: z.object({ dateTime: z.string().min(1, 'Fecha/hora de fin requerida').max(40) }),
         }),
         // Nota: el buscador público por email y el borrado directo por eventId se
         // eliminaron en la Fase 3 (permitían enumerar/cancelar turnos ajenos). La

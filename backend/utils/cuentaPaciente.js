@@ -1,0 +1,252 @@
+// Cuenta de acceso para el paciente que da de alta un profesional.
+//
+// Cuando un profesional carga un paciente nuevo con email, se le crea un usuario de
+// Supabase Auth con una contraseña temporal aleatoria, se vincula a su persona
+// (persona.id_auth) y se le envían los datos de acceso por email. Así el paciente
+// entra con su email y ve la historia clínica que ya le cargaron.
+//
+// El usuario se crea ya confirmado (email_confirm): la contraseña solo llega a ese
+// email, así que quien la recibe es quien controla la casilla. Por eso el profesional
+// tiene que cargar el email REAL del paciente (el formulario se lo advierte).
+//
+// Fase O: si el email ya tiene cuenta (el paciente se atiende en otra clínica de
+// Medilu, o es profesional), la ficha nueva se vincula a ESA cuenta cuando el DNI y el
+// email coinciden, y se le avisa por mail. Así ve la historia de todas sus clínicas.
+//
+// Usa el cliente service_role (auth.admin y el UPDATE de persona.id_auth).
+
+const crypto = require('crypto');
+const { supabase } = require('../config/supabaseClient');
+const { sendMail } = require('./mailer');
+const { layoutMail, parrafo, fuerte, link, boton, datos, aviso, nota, esc } = require('./emailLayout');
+
+// Sin caracteres ambiguos (0/O, 1/l/I) para que sea fácil de tipear desde el mail.
+const ALFABETO = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+
+function generarContrasena(longitud = 10) {
+    let out = '';
+    for (let i = 0; i < longitud; i++) out += ALFABETO[crypto.randomInt(ALFABETO.length)];
+    return out;
+}
+
+function baseUrl() {
+    return (process.env.APP_URL || '').replace(/\/+$/, '');
+}
+
+function esEmailEnUso(error) {
+    return error && (error.code === 'email_exists' || /already (been )?registered/i.test(error.message || ''));
+}
+
+async function nombreClinica(clinicaId) {
+    if (!clinicaId) return '';
+    const { data } = await supabase.from('clinica').select('nombre').eq('id', clinicaId).maybeSingle();
+    return (data && data.nombre) || '';
+}
+
+// Mails al paciente. Con MAIL_PRUEBA en el entorno (para probar sin escribirle a
+// pacientes reales) se mandan a esa casilla, con el destinatario real en el asunto.
+// La cuenta se crea igual con el email del paciente: es con el que inicia sesión.
+function enviarAlPaciente(mail) {
+    const prueba = (process.env.MAIL_PRUEBA || '').trim();
+    if (!prueba) return sendMail(mail);
+    return sendMail({ ...mail, to: prueba, subject: `[PRUEBA para ${mail.to}] ${mail.subject}` });
+}
+
+async function enviarDatosAcceso({ email, nombre, clave, clinica }) {
+    const url = baseUrl();
+    const login = url ? `${url}/login` : '';
+    const misDatos = url ? `${url}/mi-perfil` : '';
+    const de = clinica ? ` en ${clinica}` : '';
+    const hola = nombre ? `Hola ${nombre},` : 'Hola,';
+    const pasoClave = 'Andá a "Mis datos" y, abajo del todo, en "Cambiar contraseña" elegí una nueva.';
+    return enviarAlPaciente({
+        to: email,
+        subject: 'Tus datos de acceso a Medilu',
+        text: [
+            hola,
+            '',
+            `Te registraron como paciente${de}. Con esta cuenta podés ver tu historia clínica, tus estudios y tus turnos.`,
+            '',
+            `Email: ${email}`,
+            `Contraseña temporal: ${clave}`,
+            login ? `Ingresá en: ${login}` : '',
+            '',
+            `Por seguridad, cambiá la contraseña después de entrar. ${pasoClave}`,
+            misDatos ? `Mis datos: ${misDatos}` : '',
+            '',
+            'Si no te atendiste en este lugar, ignorá este email.',
+            '',
+            'Medilu.',
+        ].join('\n'),
+        html: layoutMail({
+            titulo: 'Ya tenés tu cuenta en Medilu',
+            resumen: 'Tus datos para entrar y ver tu historia clínica.',
+            cuerpo: [
+                parrafo(`${esc(hola)} te registraron como paciente${clinica ? ` en ${fuerte(clinica)}` : ''}. Con tu cuenta podés ver tu historia clínica, tus estudios y tus turnos.`),
+                datos([
+                    { etiqueta: 'Email', valor: email },
+                    { etiqueta: 'Contraseña temporal', valor: clave, mono: true },
+                ]),
+                login ? boton(login, 'Ingresar a Medilu') : '',
+                aviso(
+                    'Después de entrar, cambiá tu contraseña',
+                    `Andá a ${misDatos ? link(misDatos, 'Mis datos') : fuerte('Mis datos')} y, abajo del todo, en ${fuerte('Cambiar contraseña')} elegí una nueva.`
+                ),
+                nota(`Si no te atendiste${clinica ? ` en ${esc(clinica)}` : ' en este lugar'}, ignorá este email.`),
+            ].join('\n'),
+        }),
+    });
+}
+
+async function avisarVinculacion({ email, nombre, clinica }) {
+    const url = baseUrl();
+    const login = url ? `${url}/login` : '';
+    const hola = nombre ? `Hola ${nombre},` : 'Hola,';
+    const de = clinica || 'Un centro de salud';
+    return enviarAlPaciente({
+        to: email,
+        subject: 'Tu historia clínica ya está en tu cuenta de Medilu',
+        text: `${hola}\n\n${de} te registró como paciente. Lo que te carguen ahí lo vas a ver en tu cuenta de Medilu, con tu email y contraseña de siempre.${login ? `\n\n${login}` : ''}\n\nMedilu.`,
+        html: layoutMail({
+            titulo: 'Sumaste un nuevo lugar de atención',
+            resumen: `${de} te registró como paciente.`,
+            cuerpo: [
+                parrafo(`${esc(hola)} ${clinica ? fuerte(clinica) : 'un centro de salud'} te registró como paciente.`),
+                parrafo('Lo que te carguen ahí lo vas a ver en tu cuenta de Medilu, junto con el resto de tu historia clínica. Entrás con tu email y tu contraseña de siempre.'),
+                login ? boton(login, 'Ver mi historia clínica') : '',
+                nota('Si no te atendiste en este lugar, ignorá este email.'),
+            ].join('\n'),
+        }),
+    });
+}
+
+// Crea la cuenta del paciente y la vincula a su persona. Nunca lanza: el alta del
+// paciente ya ocurrió y no debe fallar por la cuenta. Devuelve:
+//   { estado: 'creada', mailEnviado, claveTemporal? }  (la clave solo si el mail NO salió,
+//                                                        para que el profesional se la dé)
+//   { estado: 'vinculada', mailEnviado }  ya tenía cuenta (mismo DNI y email): se vinculó
+//   { estado: 'email_en_uso' }  ese email es de otra cuenta (otro DNI): no se vincula
+//   { estado: 'sin_email' }
+//   { estado: 'error' }
+async function crearCuentaPaciente({ personaId, email, nombre, clinicaId }) {
+    const mail = String(email || '').trim().toLowerCase();
+    if (!mail) return { estado: 'sin_email' };
+
+    try {
+        const clave = generarContrasena();
+        const { data, error } = await supabase.auth.admin.createUser({
+            email: mail,
+            password: clave,
+            email_confirm: true,
+            user_metadata: { origen: 'alta_profesional', clinica_id: clinicaId || null },
+        });
+        if (error) {
+            if (esEmailEnUso(error)) {
+                return (await vincularCuentaExistente({ personaId, email: mail, nombre, clinicaId }))
+                    || { estado: 'email_en_uso' };
+            }
+            throw error;
+        }
+
+        // Vincular solo si la persona sigue sin cuenta (evita pisar un vínculo previo).
+        const { data: upd, error: updErr } = await supabase
+            .from('persona')
+            .update({ id_auth: data.user.id })
+            .eq('id', personaId)
+            .is('id_auth', null)
+            .select('id');
+        if (updErr || !upd || upd.length === 0) {
+            await supabase.auth.admin.deleteUser(data.user.id).catch(() => {});
+            if (updErr) throw updErr;
+            return { estado: 'error' };
+        }
+
+        let mailEnviado = false;
+        try {
+            mailEnviado = await enviarDatosAcceso({
+                email: mail, nombre, clave, clinica: await nombreClinica(clinicaId),
+            });
+        } catch (e) {
+            console.error('Cuenta paciente: no se pudo enviar el email de acceso:', e.message);
+        }
+        return mailEnviado ? { estado: 'creada', mailEnviado } : { estado: 'creada', mailEnviado, claveTemporal: clave };
+    } catch (e) {
+        console.error('Cuenta paciente: error creando la cuenta:', e.message || e);
+        return { estado: 'error' };
+    }
+}
+
+// Fase O: el email ya tiene cuenta. Si alguna persona con el MISMO DNI está vinculada
+// a una cuenta con ESE email, es la misma persona: la ficha nueva se ata a esa cuenta
+// (una persona por clínica por cuenta) y se le avisa. Devuelve null si no corresponde.
+async function vincularCuentaExistente({ personaId, email, nombre, clinicaId }) {
+    const { data: persona, error } = await supabase
+        .from('persona')
+        .select('dni, id_auth')
+        .eq('id', personaId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!persona || !persona.dni || persona.id_auth) return null;
+
+    const { data: mismas, error: dniErr } = await supabase
+        .from('persona')
+        .select('id_auth')
+        .eq('dni', persona.dni)
+        .neq('id', personaId)
+        .not('id_auth', 'is', null);
+    if (dniErr) throw dniErr;
+
+    for (const authId of new Set((mismas || []).map((p) => p.id_auth))) {
+        const { data } = await supabase.auth.admin.getUserById(authId);
+        if (!data || !data.user || String(data.user.email || '').toLowerCase() !== email) continue;
+
+        // Solo si la ficha sigue sin cuenta. Si la cuenta ya tiene otra persona en esta
+        // clínica (índice único id_auth+clinica_id), no se vincula.
+        const { data: upd, error: updErr } = await supabase
+            .from('persona')
+            .update({ id_auth: authId })
+            .eq('id', personaId)
+            .is('id_auth', null)
+            .select('id');
+        if (updErr) {
+            if (updErr.code === '23505') return null;
+            throw updErr;
+        }
+        if (!upd || upd.length === 0) return null;
+
+        let mailEnviado = false;
+        try {
+            mailEnviado = await avisarVinculacion({ email, nombre, clinica: await nombreClinica(clinicaId) });
+        } catch (e) {
+            console.error('Cuenta paciente: no se pudo avisar la vinculación:', e.message);
+        }
+        return { estado: 'vinculada', mailEnviado };
+    }
+    return null;
+}
+
+// Paciente que se registró solo (persona sin clínica, con cuenta) con ese DNI.
+// Si el email que cargó el profesional coincide con el de su cuenta, devuelve la
+// persona para sumarla a la clínica; si no coincide, lo informa sin revelar el email.
+async function buscarAutoregistrado(dni, email) {
+    const { data: personas, error } = await supabase
+        .from('persona')
+        .select('id, id_auth, nombre, apellido, telefono, direccion, sexo, fecha_nacimiento, email, paciente(id, id_obra_social)')
+        .eq('dni', dni)
+        .is('clinica_id', null)
+        .not('id_auth', 'is', null);
+    if (error) throw error;
+    const candidatas = (personas || []).filter((p) => p.paciente && p.paciente[0]);
+    if (candidatas.length === 0) return null;
+
+    const mail = String(email || '').trim().toLowerCase();
+    for (const p of candidatas) {
+        const { data } = await supabase.auth.admin.getUserById(p.id_auth);
+        if (mail && data && data.user && String(data.user.email || '').toLowerCase() === mail) {
+            return { coincide: true, persona: p };
+        }
+    }
+    return { coincide: false };
+}
+
+module.exports = { crearCuentaPaciente, buscarAutoregistrado, avisarVinculacion, nombreClinica };

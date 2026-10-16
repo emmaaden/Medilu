@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
 import { Link, Navigate } from "react-router-dom"
 import { toast } from "sonner"
-import { Loader2, Download, FileText, User, ArrowLeft, FileJson, Eye, Tags } from "lucide-react"
+import { Loader2, Download, FileText, User, ArrowLeft, FileJson, Eye, Tags, Building2 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Container, PageHero } from "@/components/site/Section"
@@ -13,7 +14,7 @@ import { CodificacionResumen } from "@/components/form/CodificacionEditor"
 import { ACCION_LABEL } from "@/lib/auditoria"
 import { formatFechaHora } from "@/lib/fecha"
 
-type Acceso = { id: number; fecha: string; actor: string; rol: string; accion: string }
+type Acceso = { id: number; fecha: string; actor: string; rol: string; accion: string; clinica?: string }
 
 const ROL_LABEL: Record<string, string> = {
   admin: "Administración",
@@ -40,7 +41,7 @@ function AccesosHistoria() {
         Quién accedió a tu historia clínica
       </h3>
       <p className="mt-1 text-sm text-muted-foreground">
-        Cada vez que alguien de la clínica abre, carga o audita tu historia queda registrado.
+        Cada vez que alguien de una clínica abre, carga o audita tu historia queda registrado.
       </p>
       {accesos === null ? (
         <div className="flex justify-center py-6">
@@ -57,7 +58,10 @@ function AccesosHistoria() {
                   <span>
                     <span className="font-medium">{a.actor || "Personal de la clínica"}</span>
                     {a.rol && <span className="text-muted-foreground"> · {ROL_LABEL[a.rol] ?? a.rol}</span>}
-                    <span className="block text-muted-foreground">{ACCION_LABEL[a.accion] ?? a.accion}</span>
+                    <span className="block text-muted-foreground">
+                      {ACCION_LABEL[a.accion] ?? a.accion}
+                      {a.clinica && ` · ${a.clinica}`}
+                    </span>
                   </span>
                   <span className="text-xs whitespace-nowrap text-muted-foreground">{formatFechaHora(a.fecha)}</span>
                 </li>
@@ -132,6 +136,8 @@ export default function MiHistoria() {
         ["Plan", paciente.plan],
         ["Sexo", paciente.sexo],
         ["Fecha de apertura", paciente.fechaApertura],
+        // Fase O: la historia junta los registros de todas sus clínicas.
+        ...((paciente.clinicas?.length ?? 0) > 1 ? [["Clínicas", paciente.clinicas?.join(", ")]] : []),
       ]
     : []
 
@@ -213,12 +219,26 @@ export default function MiHistoria() {
                   {paciente.history.map((e, i) => (
                     <Card key={i}>
                       <CardContent className="p-5">
+                        {e.clinica && (
+                          <Badge variant="secondary" className="mb-3 font-normal">
+                            <Building2 /> {e.clinica}
+                          </Badge>
+                        )}
                         <div className="flex flex-col gap-1 border-b border-border pb-3 sm:flex-row sm:flex-wrap sm:justify-between sm:gap-2">
                           <span className="text-sm">
                             <span className="font-medium text-muted-foreground">
                               Profesional:{" "}
                             </span>
                             {e.profesional}
+                            {e.importado && (
+                              <Badge
+                                variant="outline"
+                                className="ml-2 font-normal"
+                                title="Vino de otro sistema: la fecha y el profesional son los del archivo importado."
+                              >
+                                Importado
+                              </Badge>
+                            )}
                           </span>
                           <span className="text-sm">
                             <span className="font-medium text-muted-foreground">

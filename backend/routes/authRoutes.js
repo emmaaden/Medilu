@@ -18,8 +18,15 @@ router.post('/logout', authController.logout);
 router.get('/mis-clinicas', requireAuth, authController.misClinicas);
 router.post('/select-clinica', requireAuth, validate(schemas.auth.selectClinica), authController.selectClinica);
 
+// Fase O — cuenta que es staff y además paciente: elegir (o cambiar) el perfil.
+router.get('/perfiles', requireAuth, authController.misPerfiles);
+router.post('/select-perfil', requireAuth, validate(schemas.auth.selectPerfil), authController.selectPerfil);
+
 // Recuperación de contraseña (envía el email de recuperación de Supabase).
 router.post('/forgot-password', authLimiter, validate(schemas.auth.forgotPassword), authController.forgotPassword);
+
+// Cambiar la contraseña estando logueado (pide la actual).
+router.post('/cambiar-contrasena', authLimiter, requireAuth, validate(schemas.auth.cambiarContrasena), authController.cambiarContrasena);
 
 // Reenviar el email de confirmación de la cuenta (registro con email sin confirmar).
 router.post('/reenviar-confirmacion', authLimiter, validate(schemas.auth.reenviarConfirmacion), authController.reenviarConfirmacion);

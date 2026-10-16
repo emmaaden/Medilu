@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Link, NavLink, useNavigate } from "react-router-dom"
+import { toast } from "sonner"
 import {
   Menu,
   LayoutDashboard,
@@ -20,6 +21,8 @@ import {
   ShieldPlus,
   CreditCard,
   Gauge,
+  UserRound,
+  KeyRound,
 } from "lucide-react"
 import { cn } from "cn"
 import { Button } from "@/components/ui/button"
@@ -32,6 +35,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { CambiarContrasenaForm } from "@/components/form/CambiarContrasena"
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -43,6 +54,7 @@ import { HELP_URL } from "@/lib/site"
 import { useAuth } from "@/contexts/AuthContext"
 import { ThemeToggle } from "@/components/site/ThemeToggle"
 import { ESTADO_LABEL, tieneFeature, type Feature } from "@/lib/planes"
+import { cambiarPerfil } from "@/lib/perfil"
 
 type NavItem = {
   to: string
@@ -140,6 +152,7 @@ export function DashboardNavbar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const [cambiarPass, setCambiarPass] = useState(false)
 
   // Fase E: la recepción SOLO ve el panel de turnos. Fase J: el auditor, solo el suyo
   // (aunque el plan ya no lo incluya: la página le explica por qué).
@@ -167,6 +180,15 @@ export function DashboardNavbar() {
   async function handleLogout() {
     await logout()
     navigate("/login")
+  }
+
+  // Fase O: la cuenta también es paciente (en esta u otra clínica).
+  async function entrarComoPaciente() {
+    try {
+      window.location.assign(await cambiarPerfil("paciente"))
+    } catch {
+      toast.error("No se pudo cambiar de perfil.")
+    }
   }
 
   const initials =
@@ -291,6 +313,14 @@ export function DashboardNavbar() {
                     </Link>
                   </DropdownMenuItem>
                 )}
+                {user?.perfiles?.includes("paciente") && (
+                  <DropdownMenuItem onSelect={entrarComoPaciente}>
+                    <UserRound /> Entrar como paciente
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onSelect={() => setCambiarPass(true)}>
+                  <KeyRound /> Cambiar contraseña
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={handleLogout} variant="destructive">
                   <LogOut /> Cerrar sesión
                 </DropdownMenuItem>
@@ -345,6 +375,21 @@ export function DashboardNavbar() {
                 <p className="mb-2 truncate px-1 text-xs text-muted-foreground">
                   {user?.email}
                 </p>
+                {user?.perfiles?.includes("paciente") && (
+                  <Button variant="ghost" className="mb-2 w-full" onClick={entrarComoPaciente}>
+                    <UserRound /> Entrar como paciente
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  className="mb-2 w-full"
+                  onClick={() => {
+                    setOpen(false)
+                    setCambiarPass(true)
+                  }}
+                >
+                  <KeyRound /> Cambiar contraseña
+                </Button>
                 <Button
                   variant="outline"
                   className="w-full"
@@ -357,6 +402,20 @@ export function DashboardNavbar() {
           </Sheet>
         </div>
       </div>
+
+      <Dialog open={cambiarPass} onOpenChange={setCambiarPass}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cambiar contraseña</DialogTitle>
+            <DialogDescription>Para confirmar que sos vos, ingresá tu contraseña actual.</DialogDescription>
+          </DialogHeader>
+          <CambiarContrasenaForm onDone={() => setCambiarPass(false)}>
+            <Button type="button" variant="outline" onClick={() => setCambiarPass(false)}>
+              Cancelar
+            </Button>
+          </CambiarContrasenaForm>
+        </DialogContent>
+      </Dialog>
     </header>
   )
 }

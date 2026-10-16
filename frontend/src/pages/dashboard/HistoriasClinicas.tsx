@@ -171,7 +171,9 @@ export default function HistoriasClinicas() {
               <div>
                 <h2 className="font-semibold">Importar</h2>
                 <p className="text-sm text-muted-foreground">
-                  Desde un JSON exportado. Empareja por DNI y no duplica registros ya cargados.
+                  {esAdmin
+                    ? "Desde un JSON exportado. Empareja por DNI y no duplica registros ya cargados."
+                    : "Solo el administrador de la clínica puede importar historias clínicas."}
                 </p>
               </div>
             </div>
@@ -186,7 +188,7 @@ export default function HistoriasClinicas() {
               <Button
                 variant="outline"
                 onClick={() => importInput.current?.click()}
-                disabled={importando}
+                disabled={importando || !esAdmin}
               >
                 {importando ? <Loader2 className="animate-spin" /> : <Upload />}
                 Elegir archivo…

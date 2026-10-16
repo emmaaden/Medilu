@@ -3,6 +3,12 @@ const { slugify } = require('../utils/slug');
 const { getMembresiasActivas, roleSinProfesional } = require('../utils/membresias');
 const { columnasCobertura } = require('../utils/cobertura');
 const planes = require('../utils/planes');
+const { fichasPaciente } = require('../utils/fichasPaciente');
+const { sendMail } = require('../utils/mailer');
+const { vencimientoLocal } = require('../middleware/userSupabase');
+const { cerrarOtrasSesiones, regenerarSesion } = require('../utils/sesiones');
+const { vencido: codigoVencido, DIAS_VIGENCIA: DIAS_VIGENCIA_CODIGO } = require('../utils/codigoActivacion');
+const { layoutMail, parrafo, fuerte, boton, aviso } = require('../utils/emailLayout');
 require('dotenv').config();
 
 // service_role: SALTEA la RLS. Se usa SOLO para operaciones sobre tablas.
@@ -16,12 +22,34 @@ const supabaseAuth = createClient(process.env.SUPABASE_URL, process.env.SUPABASE
     auth: { persistSession: false, autoRefreshToken: false },
 });
 
+// Base pública para los links de los mails de auth (APP_URL o el host del request).
+// Se pasa explícita a Supabase: sin redirect, Supabase usa su "Site URL", que por
+// defecto es http://localhost:3000. Tiene que estar en las Redirect URLs del proyecto.
+function urlBase(req) {
+    return (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+}
+
 exports.register = async (req, res) => {
     const {
         email, password, activationCode, nombreClinica,
         dni, nombre, apellido, fechaNacimiento, telefono, telefono_profesional,
         direccion, direccion_profesional, obraSocial, sexo, especialidad, matricula, role, area
     } = req.body;
+
+    // Pasos para deshacer lo creado si el alta falla a mitad (se corren al revés).
+    // Sin esto quedaban cuentas de Auth, clínicas con prueba o códigos usados a medias.
+    const deshacer = [];
+    const revertir = async () => {
+        for (const paso of deshacer.reverse()) {
+            try {
+                const r = await paso();
+                if (r && r.error) console.error('Registro: no se pudo deshacer un paso:', r.error.message);
+            } catch (e) {
+                console.error('Registro: no se pudo deshacer un paso:', e.message);
+            }
+        }
+        deshacer.length = 0;
+    };
 
     try {
         // --- Fase 2: resolver la clínica del profesional ANTES de crear el usuario ---
@@ -41,12 +69,15 @@ exports.register = async (req, res) => {
         async function resolverCodigo(...rolesEsperados) {
             const { data: cod, error: codErr } = await supabase
                 .from("codigo_activacion")
-                .select("id, clinica_id, usado, rol, alcance_obra_social, alcance_id_obra_social")
+                .select("id, clinica_id, usado, rol, alcance_obra_social, alcance_id_obra_social, creado_en")
                 .eq("codigo", String(activationCode).trim())
                 .maybeSingle();
             if (codErr) throw codErr;
             if (!cod || cod.usado) {
                 return { error: "Código de activación inválido o ya utilizado." };
+            }
+            if (codigoVencido(cod.creado_en)) {
+                return { error: `El código de activación venció (dura ${DIAS_VIGENCIA_CODIGO} días). Pedile uno nuevo al administrador.` };
             }
             // Compat: los códigos previos a la Fase E no tienen rol -> 'profesional'.
             if (!rolesEsperados.includes(cod.rol || 'profesional')) {
@@ -103,7 +134,7 @@ exports.register = async (req, res) => {
         const { data, error } = await supabaseAuth.auth.signUp({
             email,
             password,
-            options: { data: { consentimiento } },
+            options: { data: { consentimiento }, emailRedirectTo: `${urlBase(req)}/login` },
         });
         if (error) { return res.status(400).json({ error: error.message }); }
 
@@ -114,7 +145,45 @@ exports.register = async (req, res) => {
             });
         }
 
-        const userId = data.user.id;
+        // Email ya registrado (auditoría 2026-10-15, #8): con la confirmación de email
+        // activa, Supabase NO da error para no revelar qué emails existen; devuelve un
+        // usuario ofuscado, con un id que no existe y sin identidades. No se crea nada y
+        // se responde igual que a un alta nueva (sin revelar que la cuenta existía).
+        const yaRegistrado = { message: "Registro exitoso", requiereConfirmacion: true };
+        if (Array.isArray(user.identities) && user.identities.length === 0) {
+            return res.json(yaRegistrado);
+        }
+
+        const userId = user.id;
+
+        // Cuenta que ya existía sin confirmar y con sus datos cargados (se registró
+        // antes): no se duplica. Sin datos es una cuenta huérfana de un alta que falló:
+        // se completa ahora y, si vuelve a fallar, se borra.
+        const { data: previas, error: prevErr } = await supabase
+            .from("persona").select("id").eq("id_auth", userId).limit(1);
+        if (prevErr) throw prevErr;
+        if (previas && previas.length > 0) return res.json(yaRegistrado);
+        deshacer.push(() => supabase.auth.admin.deleteUser(userId));
+
+        // El código de activación se marca como usado ANTES de crear nada, y solo si
+        // seguía libre: dos registros simultáneos con el mismo código no pasan los dos.
+        if (codigoRow) {
+            const { data: tomado, error: tomErr } = await supabase
+                .from("codigo_activacion")
+                .update({ usado: true, usado_por: userId })
+                .eq("id", codigoRow.id)
+                .eq("usado", false)
+                .select("id");
+            if (tomErr) throw tomErr;
+            if (!tomado || tomado.length === 0) {
+                await revertir();
+                return res.status(400).json({ error: "Código de activación inválido o ya utilizado." });
+            }
+            deshacer.push(() => supabase
+                .from("codigo_activacion")
+                .update({ usado: false, usado_por: null })
+                .eq("id", codigoRow.id));
+        }
 
         // Crear la clínica nueva (vía b) una vez confirmado el usuario.
         if (role === "PROFESIONAL" && !clinicaId && tieneNombreClinica) {
@@ -137,7 +206,10 @@ exports.register = async (req, res) => {
             if (!cli) throw cliErr || new Error('No se pudo crear la clínica');
             clinicaId = cli.id;
             esAdmin = true;
+            const clinicaNueva = cli.id;
+            deshacer.push(() => supabase.from("clinica").delete().eq("id", clinicaNueva));
             // Fase L: toda clínica nueva arranca con la prueba del plan completo.
+            deshacer.push(() => supabase.from("suscripcion").delete().eq("clinica_id", clinicaNueva));
             await planes.crearPrueba(clinicaId);
         }
 
@@ -162,12 +234,14 @@ exports.register = async (req, res) => {
         if (persona_error) throw persona_error;
 
         const id_persona = persona_data.id;
+        deshacer.push(() => supabase.from("persona").delete().eq("id", id_persona));
 
         if (role === "PACIENTE") {
             // Fase K: cobertura del catálogo global (el paciente aún no tiene clínica).
             // Si no eligió del catálogo, se conserva el texto libre (compatibilidad).
             const cob = await columnasCobertura(req.body, null);
             const cols = cob.ok ? cob.cols : {};
+            deshacer.push(() => supabase.from("paciente").delete().eq("id_persona", id_persona));
             const { error: err } = await supabase
                 .from("paciente")
                 .insert([{ id_persona, obra_social: obraSocial || null, ...cols }]);
@@ -187,7 +261,9 @@ exports.register = async (req, res) => {
                 .select()
                 .single();
             if (err_prof) throw err_prof;
+            deshacer.push(() => supabase.from("profesional").delete().eq("id", data_prof.id));
 
+            deshacer.push(() => supabase.from("especialidad_profesional").delete().eq("id_profesional", data_prof.id));
             const { error: err_esp } = await supabase
                 .from("especialidad_profesional")
                 .insert([{
@@ -199,6 +275,8 @@ exports.register = async (req, res) => {
             // Fase A: crear la membresía (pertenencia + rol en la clínica).
             //   - alta con código  -> rol 'profesional'
             //   - clínica nueva     -> rol 'admin' (esAdmin=true)
+            // (El código de activación ya se marcó como usado al principio.)
+            deshacer.push(() => supabase.from("membresia").delete().eq("id_persona", id_persona));
             const { error: err_mem } = await supabase
                 .from("membresia")
                 .insert([{
@@ -208,14 +286,6 @@ exports.register = async (req, res) => {
                     activo: true,
                 }]);
             if (err_mem) throw err_mem;
-
-            // Marcar el código de activación como usado.
-            if (codigoRow) {
-                await supabase
-                    .from("codigo_activacion")
-                    .update({ usado: true, usado_por: userId })
-                    .eq("id", codigoRow.id);
-            }
         }
 
         if (role === "RECEPCION") {
@@ -224,6 +294,7 @@ exports.register = async (req, res) => {
             // membresía. La clínica activa se resuelve luego a partir de ella.
             // Fase J: con un código de auditor queda como 'auditor' (con el alcance del código).
             const esAuditor = codigoRow && codigoRow.rol === 'auditor';
+            deshacer.push(() => supabase.from("membresia").delete().eq("id_persona", id_persona));
             const { error: err_mem } = await supabase
                 .from("membresia")
                 .insert([{
@@ -235,13 +306,6 @@ exports.register = async (req, res) => {
                     activo: true,
                 }]);
             if (err_mem) throw err_mem;
-
-            if (codigoRow) {
-                await supabase
-                    .from("codigo_activacion")
-                    .update({ usado: true, usado_por: userId })
-                    .eq("id", codigoRow.id);
-            }
         }
 
         // Con la confirmación de email activada, signUp no devuelve sesión: el usuario
@@ -254,6 +318,7 @@ exports.register = async (req, res) => {
 
     } catch (err) {
         console.error("Error detallado en registro:", err);
+        await revertir();
         res.status(500).json({ error: "Error en el registro" });
     }
 };
@@ -283,104 +348,170 @@ exports.login = async (req, res) => {
 
         const userId = data.user.id;
 
-        // 2. Detectar el rol desde la base (NO se confía en un rol enviado por el
-        //    cliente). Un mismo formulario de login sirve para profesional y paciente.
-        //    Si una persona fuese ambas cosas, se prioriza profesional.
-        const { data: persona, error: personaError } = await supabase
-            .from("persona")
-            .select(`id, clinica_id, profesional(id), paciente(id)`)
-            .eq("id_auth", userId)
-            .maybeSingle();
-        if (personaError) {
-            console.error("Error al buscar la persona en login:", personaError);
-        }
+        // Sesión nueva (otro id de cookie) para que un id plantado antes del login no
+        // quede autenticado (session fixation; auditoría 2026-10-15, #7).
+        await regenerarSesion(req);
 
-        const profRow = persona?.profesional?.[0];
-        const pacRow = persona?.paciente?.[0];
-        const personaId = persona?.id || null;
-
-        let role = null;
-        let idRole = null;
-
-        if (profRow) {
-            role = "profesional";
-            idRole = profRow.id;
-        } else if (pacRow) {
-            role = "paciente";
-            idRole = pacRow.id;
-        }
-        // 3. Sin fila en profesional/paciente puede ser RECEPCIÓN (Fase E): se confirma
-        //    más abajo con las membresías activas. No cortamos acá.
-
-        // 4. Guardar los tokens de Supabase (Fase 2c: operar por-JWT bajo RLS).
+        // 2. Guardar los tokens de Supabase (Fase 2c: operar por-JWT bajo RLS).
         if (data.session) {
             req.session.sb = {
                 accessToken: data.session.access_token,
                 refreshToken: data.session.refresh_token,
-                expiresAt: data.session.expires_at, // epoch en segundos
+                expiresAt: vencimientoLocal(data.session), // epoch en segundos, reloj local
             };
         }
-
-        // 5. Fase A — resolver la clínica activa a partir de las MEMBRESÍAS.
-        //    Los pacientes siguen mono-clínica (persona.clinica_id).
         req.session.isAuthenticated = true;
 
-        if (role === "paciente") {
+        // 3. Detectar los perfiles desde la base (NO se confía en un rol enviado por el
+        //    cliente). Un mismo formulario de login sirve para staff y paciente.
+        //    Fase O: una cuenta puede ser staff y además paciente (en otra clínica o en
+        //    la suya); en ese caso elige con qué perfil entrar (POST /auth/select-perfil).
+        const auth = { id: userId, email: data.user.email };
+        const perfiles = await perfilesDeCuenta(userId);
+
+        if (perfiles.staff && perfiles.fichas.length > 0) {
             req.session.user = {
-                idRole, id: userId, personaId, email: data.user.email, role,
-                clinicaId: persona?.clinica_id || null, rol: null, esAdmin: false,
+                idRole: null, id: userId, personaId: null, email: auth.email, role: null,
+                clinicaId: null, rol: null, esAdmin: false, perfiles: ['staff', 'paciente'],
             };
-            return res.json({ message: "Login exitoso", user: req.session.user });
-        }
-
-        // Profesional/recepción/admin: puede tener N clínicas.
-        let membresias = [];
-        try {
-            membresias = await getMembresiasActivas(supabase, personaId);
-        } catch (e) {
-            console.error("Error obteniendo membresías en login:", e.message);
-        }
-
-        if (membresias.length === 0) {
-            // Sin membresía activa: dado de baja en todas sus clínicas, cuenta legacy
-            // sin backfill, o un usuario sin ningún rol. No puede operar.
-            req.session.destroy(() => {});
-            return res.status(403).json({
-                error: role
-                    ? "No tenés una clínica activa asignada. Contactá al administrador."
-                    : "El usuario no tiene rol asignado",
+            return res.json({
+                message: "Elegí con qué perfil entrar",
+                needsProfileSelection: true,
+                user: req.session.user,
             });
         }
+        if (perfiles.staff) return iniciarStaff(req, res, auth, perfiles.staff, ['staff']);
+        if (perfiles.fichas.length > 0) return iniciarPaciente(req, res, auth, perfiles.fichas, ['paciente']);
 
-        // Fase E: sin fila en `profesional` pero con membresía activa => RECEPCIÓN
-        // (Fase J: o AUDITOR, si esa es su membresía).
-        if (!role) role = roleSinProfesional(membresias);
-
-        if (membresias.length === 1) {
-            const m = membresias[0];
-            req.session.user = {
-                idRole, id: userId, personaId, email: data.user.email, role,
-                clinicaId: m.clinicaId, rol: m.rol, esAdmin: m.esAdmin,
-                alcanceObraSocial: m.alcanceObraSocial, alcanceIdObraSocial: m.alcanceIdObraSocial,
-            };
-            return res.json({ message: "Login exitoso", user: req.session.user });
-        }
-
-        // Varias clínicas: no se fija ninguna todavía; el cliente debe elegir.
-        req.session.user = {
-            idRole, id: userId, personaId, email: data.user.email, role,
-            clinicaId: null, rol: null, esAdmin: false, alcanceObraSocial: null, alcanceIdObraSocial: null,
-        };
-        return res.json({
-            message: "Elegí la clínica para trabajar",
-            needsClinicSelection: true,
-            clinicas: membresias.map((m) => ({ clinicaId: m.clinicaId, nombre: m.nombre, rol: m.rol })),
-            user: req.session.user,
+        // Sin perfil: dado de baja en todas sus clínicas, cuenta legacy sin backfill, o
+        // un usuario sin ningún rol. No puede operar.
+        req.session.destroy(() => {});
+        return res.status(403).json({
+            error: perfiles.profesionalSinClinica
+                ? "No tenés una clínica activa asignada. Contactá al administrador."
+                : "El usuario no tiene rol asignado",
         });
 
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Error al iniciar sesión" });
+    }
+};
+
+// Fase O — perfiles de una cuenta de Auth:
+//   staff: { persona, profRow, membresias } si es profesional/recepción/auditor con al
+//          menos una membresía activa (una cuenta tiene una sola persona de staff).
+//   fichas: sus fichas de paciente (una por clínica; ver utils/fichasPaciente).
+async function perfilesDeCuenta(userId) {
+    const { data: personas, error } = await supabase
+        .from("persona")
+        .select("id, profesional(id)")
+        .eq("id_auth", userId)
+        .order("id", { ascending: true });
+    if (error) console.error("Error al buscar las personas en login:", error);
+
+    // Profesional primero; si no hay, la persona con membresías (recepción/auditoría).
+    const lista = [...(personas || [])].sort((a, b) => !!b.profesional?.[0] - !!a.profesional?.[0]);
+    let staff = null;
+    for (const p of lista) {
+        let membresias = [];
+        try {
+            membresias = await getMembresiasActivas(supabase, p.id);
+        } catch (e) {
+            console.error("Error obteniendo membresías en login:", e.message);
+        }
+        if (membresias.length > 0) {
+            staff = { persona: p, profRow: p.profesional?.[0] || null, membresias };
+            break;
+        }
+    }
+
+    return {
+        staff,
+        profesionalSinClinica: !staff && lista.some((p) => p.profesional?.[0]),
+        fichas: await fichasPaciente(userId),
+    };
+}
+
+// Sesión de paciente: la ficha "principal" (autoregistro o la más vieja) da idRole y
+// personaId por compatibilidad; lo del paciente se arma con todas sus fichas.
+function iniciarPaciente(req, res, auth, fichas, perfiles) {
+    const principal = fichas[0];
+    req.session.user = {
+        idRole: principal.paciente.id, id: auth.id, personaId: principal.persona.id,
+        email: auth.email, role: "paciente",
+        clinicaId: principal.clinicaId, rol: null, esAdmin: false, perfiles,
+    };
+    return res.json({ message: "Login exitoso", user: req.session.user });
+}
+
+// Sesión de staff (Fase A): la clínica activa sale de las MEMBRESÍAS.
+function iniciarStaff(req, res, auth, staff, perfiles) {
+    const { persona, profRow, membresias } = staff;
+    // Fase E: sin fila en `profesional` => RECEPCIÓN (Fase J: o AUDITOR).
+    const role = profRow ? "profesional" : roleSinProfesional(membresias);
+    const base = {
+        idRole: profRow ? profRow.id : null, id: auth.id, personaId: persona.id,
+        email: auth.email, role, perfiles,
+    };
+
+    if (membresias.length === 1) {
+        const m = membresias[0];
+        req.session.user = {
+            ...base, clinicaId: m.clinicaId, rol: m.rol, esAdmin: m.esAdmin,
+            alcanceObraSocial: m.alcanceObraSocial, alcanceIdObraSocial: m.alcanceIdObraSocial,
+        };
+        return res.json({ message: "Login exitoso", user: req.session.user });
+    }
+
+    // Varias clínicas: no se fija ninguna todavía; el cliente debe elegir.
+    req.session.user = {
+        ...base, clinicaId: null, rol: null, esAdmin: false, alcanceObraSocial: null, alcanceIdObraSocial: null,
+    };
+    return res.json({
+        message: "Elegí la clínica para trabajar",
+        needsClinicSelection: true,
+        clinicas: membresias.map((m) => ({ clinicaId: m.clinicaId, nombre: m.nombre, rol: m.rol })),
+        user: req.session.user,
+    });
+}
+
+// Fase O — GET /auth/perfiles: con qué perfiles puede entrar la cuenta (para el
+// selector), con las clínicas de cada uno.
+exports.misPerfiles = async (req, res) => {
+    try {
+        const { staff, fichas } = await perfilesDeCuenta(req.session.user.id);
+        return res.json({
+            activo: req.session.user.role === "paciente" ? "paciente" : (req.session.user.role ? "staff" : null),
+            staff: staff && {
+                role: staff.profRow ? "profesional" : roleSinProfesional(staff.membresias),
+                clinicas: staff.membresias.map((m) => m.nombre).filter(Boolean),
+            },
+            paciente: fichas.length > 0 ? { clinicas: fichas.map((f) => f.clinica).filter(Boolean) } : null,
+        });
+    } catch (err) {
+        console.error("Error en perfiles:", err);
+        return res.status(500).json({ error: "Error al obtener tus perfiles" });
+    }
+};
+
+// Fase O — POST /auth/select-perfil { perfil: 'staff' | 'paciente' }: entra (o cambia)
+// con ese perfil. Se recalcula desde la base: no se confía en la sesión ni en el cliente.
+exports.selectPerfil = async (req, res) => {
+    try {
+        const u = req.session.user;
+        const auth = { id: u.id, email: u.email };
+        const { staff, fichas } = await perfilesDeCuenta(u.id);
+        const disponibles = [staff && "staff", fichas.length > 0 && "paciente"].filter(Boolean);
+        if (!disponibles.includes(req.body.perfil)) {
+            return res.status(403).json({ error: "Tu cuenta no tiene ese perfil." });
+        }
+        return req.body.perfil === "staff"
+            ? iniciarStaff(req, res, auth, staff, disponibles)
+            : iniciarPaciente(req, res, auth, fichas, disponibles);
+    } catch (err) {
+        console.error("Error en select-perfil:", err);
+        return res.status(500).json({ error: "Error al elegir el perfil" });
     }
 };
 
@@ -392,7 +523,11 @@ exports.reenviarConfirmacion = async (req, res) => {
     };
     try {
         const { email } = req.body;
-        const { error } = await supabaseAuth.auth.resend({ type: 'signup', email });
+        const { error } = await supabaseAuth.auth.resend({
+            type: 'signup',
+            email,
+            options: { emailRedirectTo: `${urlBase(req)}/login` },
+        });
         if (error) {
             // Se loguea pero no se expone al cliente (incluye el límite de envíos de Supabase).
             console.error('Error en resend de confirmación:', error.message);
@@ -437,6 +572,10 @@ exports.selectClinica = async (req, res) => {
         const personaId = req.session.user?.personaId;
         const { clinicaId } = req.body;
         if (!personaId) return res.status(403).json({ error: 'Sesión sin identidad.' });
+        // Fase O: la clínica activa es del perfil de staff; el paciente no la elige.
+        if (req.session.user.role === 'paciente') {
+            return res.status(403).json({ error: 'Entrá con tu perfil de profesional para elegir una clínica.' });
+        }
         if (!clinicaId) return res.status(400).json({ error: 'Debés indicar una clínica.' });
 
         const membresias = await getMembresiasActivas(supabase, personaId);
@@ -481,7 +620,7 @@ exports.getArea = async (req, res) => {
                 .limit(1);
             if (error) {
                 console.error('Error obteniendo el área:', error);
-                return res.status(400).json({ error: error.message });
+                return res.status(500).json({ error: 'Error al obtener el área' });
             }
             if (data && data[0] && data[0].id_especialidad) area = data[0].id_especialidad.nombre;
         }
@@ -505,7 +644,7 @@ exports.forgotPassword = async (req, res) => {
         const { email } = req.body;
         if (!email) return res.status(400).json({ error: 'Debe indicar un email.' });
 
-        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+        const baseUrl = urlBase(req);
         // Ruta del SPA (React). Se conserva compatibilidad con el legacy .html vía
         // un redirect en el router del frontend.
         const redirectTo = `${baseUrl}/reset-password`;
@@ -520,6 +659,70 @@ exports.forgotPassword = async (req, res) => {
     } catch (err) {
         console.error('Error en forgot-password:', err);
         return res.json(respuestaGenerica);
+    }
+};
+
+// Cambiar la contraseña estando logueado (cualquier rol). Pide la actual: si alguien
+// agarra una sesión abierta no puede cambiarla sin saberla. El usuario se toma de la
+// sesión, nunca del body. La sesión actual sigue válida.
+exports.cambiarContrasena = async (req, res) => {
+    try {
+        const { actual, nueva } = req.body;
+        const userId = req.session.user.id;
+        if (actual === nueva) {
+            return res.status(400).json({ error: 'La contraseña nueva tiene que ser distinta de la actual.' });
+        }
+
+        const { data: u, error: uErr } = await supabase.auth.admin.getUserById(userId);
+        const email = u && u.user && u.user.email;
+        if (uErr || !email) return res.status(400).json({ error: 'No encontramos tu cuenta.' });
+
+        // Verificar la contraseña actual (cliente anon, sin adjuntar la sesión al service_role).
+        const { data: check, error: checkErr } = await supabaseAuth.auth.signInWithPassword({ email, password: actual });
+        if (checkErr) return res.status(400).json({ error: 'La contraseña actual no es correcta.' });
+        // Esa verificación abrió una sesión de Supabase que no se usa: se cierra.
+        if (check && check.session) {
+            supabase.auth.admin.signOut(check.session.access_token, 'local').catch(() => {});
+        }
+
+        const { error } = await supabase.auth.admin.updateUserById(userId, { password: nueva });
+        if (error) {
+            if (error.code === 'weak_password' || error.code === 'same_password') {
+                return res.status(400).json({ error: 'Elegí una contraseña más segura (y distinta de la anterior).' });
+            }
+            throw error;
+        }
+
+        // Las demás sesiones abiertas de la cuenta se cierran: quien tuviera una
+        // (p. ej. en otra compu) tiene que volver a entrar con la contraseña nueva.
+        try {
+            await cerrarOtrasSesiones(req, userId);
+        } catch (e) {
+            console.error('No se pudieron cerrar las otras sesiones:', e.message);
+        }
+
+        // Aviso por mail (best-effort): si no fue el titular, se entera.
+        const baseUrl = urlBase(req);
+        sendMail({
+            to: email,
+            subject: 'Tu contraseña de Medilu se cambió',
+            text: `Hola,\n\nLa contraseña de tu cuenta de Medilu se cambió recién.\n\nSi no fuiste vos, restablecela ya desde ${baseUrl}/forgot-password.\n\nMedilu.`,
+            html: layoutMail({
+                titulo: 'Cambiaste tu contraseña',
+                resumen: 'La contraseña de tu cuenta de Medilu se cambió.',
+                cuerpo: [
+                    parrafo(`Hola, la contraseña de tu cuenta de Medilu (${fuerte(email)}) se cambió recién.`),
+                    parrafo('Si fuiste vos, no tenés que hacer nada.'),
+                    aviso('¿No fuiste vos?', 'Restablecé tu contraseña ahora mismo para recuperar el control de tu cuenta.'),
+                    boton(`${baseUrl}/forgot-password`, 'Restablecer contraseña'),
+                ].join('\n'),
+            }),
+        }).catch((e) => console.error('No se pudo avisar el cambio de contraseña:', e.message));
+
+        return res.json({ message: 'Contraseña actualizada.' });
+    } catch (err) {
+        console.error('Error en cambiar-contrasena:', err);
+        return res.status(500).json({ error: 'No se pudo cambiar la contraseña.' });
     }
 };
 
@@ -543,7 +746,7 @@ exports.saveArea = async (req, res) => {
                 .select('id')
                 .eq('nombre', especialidad)
                 .maybeSingle();
-            if (error) return res.status(400).json({ error: error.message });
+            if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Especialidad no encontrada' });
             idEspecialidad = data.id;
         }
@@ -556,7 +759,7 @@ exports.saveArea = async (req, res) => {
                 { id_profesional: idRole, id_especialidad: idEspecialidad },
                 { onConflict: 'id_profesional,id_especialidad' }
             );
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) throw error;
 
         return res.json({ message: 'Área asignada correctamente', especialidad: idEspecialidad });
     } catch (err) {

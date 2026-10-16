@@ -10,6 +10,7 @@
 const crypto = require('crypto');
 const { supabase } = require('../config/supabaseClient');       // service_role (storage)
 const { getUserSupabase } = require('../middleware/userSupabase'); // por-JWT (RLS de la tabla)
+const { misPacienteIds } = require('../utils/fichasPaciente');
 const { generarCertificadoPdf } = require('../utils/certificadoPdf');
 
 const FIRMA_BUCKET = 'firmas';
@@ -296,6 +297,8 @@ exports.misCertificados = async (req, res) => {
         const { data, error } = await db
             .from('certificado_medico')
             .select('id, tipo, motivo, diagnostico, indicaciones, dias_reposo, paciente_nombre, profesional_nombre, archivo_mime, emitido_en')
+            // Fase O: los de todas sus fichas; solo los propios aunque la cuenta sea staff.
+            .in('id_paciente', await misPacienteIds(req.session.user.id))
             .order('emitido_en', { ascending: false });
         if (error) return res.status(400).json({ error: error.message });
 
@@ -319,16 +322,22 @@ exports.descargar = async (req, res) => {
         // o un profesional de la clínica del certificado.
         const { data: cert, error } = await db
             .from('certificado_medico')
-            .select('id, archivo_path')
+            .select('id, archivo_path, clinica_id')
             .eq('id', id)
             .maybeSingle();
         if (error) return res.status(400).json({ error: error.message });
         if (!cert) return res.status(404).json({ error: 'Certificado no encontrado.' });
+        // El archivo tiene que estar en la carpeta de la clínica del certificado: la fila
+        // la puede insertar un miembro por la API y acá se firma con service_role (#11).
+        const p = cert.archivo_path;
+        if (typeof p !== 'string' || !cert.clinica_id || p.includes('..') || !p.startsWith(`${cert.clinica_id}/`)) {
+            return res.status(404).json({ error: 'Certificado no encontrado.' });
+        }
 
         // Firmar con service_role (bucket privado).
         const { data: signed, error: signErr } = await supabase.storage
             .from(CERT_BUCKET)
-            .createSignedUrl(cert.archivo_path, SIGNED_TTL);
+            .createSignedUrl(p, SIGNED_TTL);
         if (signErr || !signed) return res.status(500).json({ error: 'No se pudo generar el enlace.' });
 
         return res.json({ url: signed.signedUrl });

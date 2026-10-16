@@ -32,6 +32,11 @@ function Guarded() {
     return <Navigate to="/login" replace />
   }
 
+  // Fase O: cuenta del equipo que además es paciente, sin perfil elegido todavía.
+  if (user.needsProfileSelection) {
+    return <Navigate to="/elegir-perfil" replace />
+  }
+
   // El panel es del staff (profesional/admin y recepción). Un paciente va a su área.
   // (El backend además exige el rol correspondiente en cada endpoint.)
   if (user.role !== "profesional" && user.role !== "recepcion" && user.role !== "auditor") {

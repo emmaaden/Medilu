@@ -49,6 +49,40 @@ async function intervalosOcupadosDia(profId, dateStr) {
     return intervalos;
 }
 
+// Normaliza un nombre de día (minúsculas, sin acentos) para comparar.
+function normalizarDia(s) {
+    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+// Fecha (YYYY-MM-DD) en Argentina de un instante.
+function fechaAR(fecha) {
+    return new Date(fecha.getTime() - 3 * 3600000).toISOString().slice(0, 10);
+}
+
+// Franjas de atención (`horario_profesional`) que corresponden al día de la semana de
+// una fecha YYYY-MM-DD.
+function franjasDeFecha(horarios, dateStr) {
+    const diaSemana = normalizarDia(
+        new Date(`${dateStr}T12:00:00${AR_OFFSET}`)
+            .toLocaleDateString('es-AR', { weekday: 'long', timeZone: 'America/Argentina/Buenos_Aires' })
+    );
+    return (horarios || []).filter(h => normalizarDia(h.dia) === diaSemana);
+}
+
+// Inicio de cada slot de 30' que entra en las franjas de una fecha (libres o no).
+function iniciosDeSlots(dateStr, franjas) {
+    const inicios = [];
+    for (const franja of franjas || []) {
+        let actual = new Date(`${dateStr}T${franja.horario_inicio}${AR_OFFSET}`);
+        const fin = new Date(`${dateStr}T${franja.horario_fin}${AR_OFFSET}`);
+        while (actual < fin) {
+            inicios.push(actual);
+            actual = new Date(actual.getTime() + SLOT_MINUTOS * 60000);
+        }
+    }
+    return inicios;
+}
+
 // Genera las franjas de 30' disponibles de un profesional para una fecha, dadas sus
 // franjas de atención de ese día (`franjas` = [{ horario_inicio, horario_fin }]).
 // Devuelve un array de ISO strings (inicio de cada slot libre y futuro).
@@ -58,17 +92,49 @@ async function slotsDisponibles(profId, dateStr, franjas) {
     const ahora = new Date();
     const slots = [];
 
-    for (const franja of franjas) {
-        let actual = new Date(`${dateStr}T${franja.horario_inicio}${AR_OFFSET}`);
-        const fin = new Date(`${dateStr}T${franja.horario_fin}${AR_OFFSET}`);
-        while (actual < fin) {
-            const slotFin = new Date(actual.getTime() + SLOT_MINUTOS * 60000);
-            const ocupado = ocupados.some(([s, e]) => s < slotFin && e > actual);
-            if (!ocupado && actual > ahora) slots.push(actual.toISOString());
-            actual = slotFin;
-        }
+    for (const actual of iniciosDeSlots(dateStr, franjas)) {
+        const slotFin = new Date(actual.getTime() + SLOT_MINUTOS * 60000);
+        const ocupado = ocupados.some(([s, e]) => s < slotFin && e > actual);
+        if (!ocupado && actual > ahora) slots.push(actual.toISOString());
     }
     return slots;
+}
+
+// Valida el horario pedido para un turno ANTES de mirar si está libre: fechas válidas,
+// 30' exactos, en el futuro y en uno de los slots del horario de atención (los mismos
+// que ofrece /available-slots). Devuelve null si está bien o { status: 400, error }.
+// Lo usan la reserva pública y el staff: ninguno de los dos ofrece hoy horarios
+// fuera de la atención ni en el pasado.
+async function validarHorarioTurno(profId, inicioISO, finISO) {
+    const inicio = new Date(inicioISO);
+    const fin = new Date(finISO);
+    if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) {
+        return { status: 400, error: 'La fecha u hora del turno no es válida.' };
+    }
+    if (fin.getTime() - inicio.getTime() !== SLOT_MINUTOS * 60000) {
+        return { status: 400, error: `El turno tiene que durar ${SLOT_MINUTOS} minutos.` };
+    }
+    if (inicio <= new Date()) {
+        return { status: 400, error: 'Ese horario ya pasó. Elegí uno futuro.' };
+    }
+
+    const { data: horarios, error } = await supabase
+        .from('horario_profesional')
+        .select('dia, horario_inicio, horario_fin')
+        .eq('id_profesional', profId);
+    if (error) throw error;
+    const dateStr = fechaAR(inicio);
+    const enHorario = iniciosDeSlots(dateStr, franjasDeFecha(horarios, dateStr))
+        .some(s => s.getTime() === inicio.getTime());
+    if (!enHorario) {
+        return { status: 400, error: 'Ese horario está fuera de la atención del profesional.' };
+    }
+    return null;
+}
+
+// ¿El error de Postgres es la restricción de exclusión de turnos (Fase Q)?
+function esSolapeTurno(err) {
+    return err?.code === '23P01';
 }
 
 // ¿El intervalo [inicioISO, finISO) está libre para el profesional?
@@ -100,4 +166,7 @@ async function estaLibre(profId, inicioISO, finISO, excluirTurnoId = null) {
     return true;
 }
 
-module.exports = { SLOT_MINUTOS, slotsDisponibles, estaLibre, intervalosOcupadosDia };
+module.exports = {
+    SLOT_MINUTOS, normalizarDia, franjasDeFecha, slotsDisponibles, validarHorarioTurno,
+    estaLibre, esSolapeTurno, intervalosOcupadosDia,
+};

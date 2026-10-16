@@ -6,13 +6,7 @@ const { getUserSupabase } = require('../middleware/userSupabase');
 const { resolverObraSocial } = require('../utils/cobertura');
 const planes = require('../utils/planes');
 
-// Código legible sin caracteres ambiguos (0/O, 1/I).
-function generarCodigoAleatorio() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let c = '';
-    for (let i = 0; i < 8; i++) c += chars[Math.floor(Math.random() * chars.length)];
-    return c;
-}
+const { generarCodigo: generarCodigoAleatorio, vencido } = require('../utils/codigoActivacion');
 
 // Info de la clínica del usuario autenticado.
 exports.info = async (req, res) => {
@@ -101,7 +95,8 @@ exports.listarCodigos = async (req, res) => {
             .order('creado_en', { ascending: false });
         if (error) return res.status(400).json({ error: error.message });
 
-        return res.json({ codigos: data || [] });
+        // Los sin usar que pasaron los 30 días ya no sirven para registrarse.
+        return res.json({ codigos: (data || []).map((c) => ({ ...c, vencido: !c.usado && vencido(c.creado_en) })) });
     } catch (err) {
         console.error('Error listando códigos:', err);
         return res.status(500).json({ error: 'Error al listar los códigos' });

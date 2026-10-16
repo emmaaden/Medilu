@@ -16,11 +16,16 @@ import {
   Pencil,
   Tags,
   ClipboardList,
+  Mail,
+  MailCheck,
+  TriangleAlert,
+  UserCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Field } from "@/components/form/Field"
 import { DictationTextarea } from "@/components/form/DictationTextarea"
 import { SelectField } from "@/components/form/SelectField"
@@ -56,14 +61,6 @@ const SEXO = [
   { value: "Femenino", label: "Femenino" },
   { value: "Otro", label: "Otro" },
 ]
-
-function generarContrasena(longitud = 8) {
-  const c = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%"
-  let out = ""
-  for (let i = 0; i < longitud; i++)
-    out += c.charAt(Math.floor(Math.random() * c.length))
-  return out
-}
 
 type View = "menu" | "registrar" | "buscar"
 
@@ -173,6 +170,96 @@ function MenuCard({
 }
 
 /* --------------------------- Registrar --------------------------- */
+
+/** Resultado de crear/vincular la cuenta del paciente (ver backend/utils/cuentaPaciente.js). */
+type CuentaPaciente = {
+  estado: "creada" | "vinculada" | "email_en_uso" | "sin_email" | "error"
+  mailEnviado?: boolean
+  claveTemporal?: string
+}
+
+function errorCode(err: unknown) {
+  if (!(err instanceof ApiError) || !err.data || typeof err.data !== "object") return undefined
+  return (err.data as { code?: string }).code
+}
+
+/** Qué pasó con el acceso del paciente, para mostrárselo al profesional. */
+function AccesoResultado({ cuenta, email }: { cuenta: CuentaPaciente; email: string }) {
+  if (cuenta.estado === "creada" && cuenta.mailEnviado) {
+    return (
+      <Alert>
+        <MailCheck aria-hidden />
+        <AlertTitle>Le enviamos sus datos de acceso</AlertTitle>
+        <AlertDescription>
+          <p>
+            Llegan a <strong className="break-all text-foreground">{email}</strong>. Con eso entra a
+            Medilu y ve su historia clínica. Si no le llega, que revise el spam.
+          </p>
+        </AlertDescription>
+      </Alert>
+    )
+  }
+  if (cuenta.estado === "creada") {
+    return (
+      <div className="space-y-3">
+        <Alert>
+          <TriangleAlert aria-hidden />
+          <AlertTitle>No pudimos enviar el email</AlertTitle>
+          <AlertDescription>
+            <p>
+              La cuenta quedó creada con <span className="break-all">{email}</span>. Dale esta
+              contraseña temporal al paciente para que entre y la cambie.
+            </p>
+          </AlertDescription>
+        </Alert>
+        {cuenta.claveTemporal && (
+          <div className="rounded-lg border border-border bg-muted/40 p-4 text-center">
+            <p className="text-xs text-muted-foreground">Contraseña temporal</p>
+            <p className="mt-1 font-mono text-xl font-semibold">{cuenta.claveTemporal}</p>
+          </div>
+        )}
+      </div>
+    )
+  }
+  if (cuenta.estado === "vinculada") {
+    return (
+      <Alert>
+        <MailCheck aria-hidden />
+        <AlertTitle>El paciente ya tenía cuenta en Medilu</AlertTitle>
+        <AlertDescription>
+          <p>
+            Lo sumamos a tu clínica: va a ver esta consulta en su cuenta, con su email y contraseña
+            de siempre.
+          </p>
+        </AlertDescription>
+      </Alert>
+    )
+  }
+  if (cuenta.estado === "email_en_uso") {
+    return (
+      <Alert>
+        <TriangleAlert aria-hidden />
+        <AlertTitle>Ese email ya tiene otra cuenta</AlertTitle>
+        <AlertDescription>
+          <p>
+            <span className="break-all">{email}</span> ya está en uso en Medilu, así que no le
+            creamos acceso. Si el email era otro, corregilo desde su ficha con “Enviar acceso”.
+          </p>
+        </AlertDescription>
+      </Alert>
+    )
+  }
+  return (
+    <Alert>
+      <TriangleAlert aria-hidden />
+      <AlertTitle>No pudimos crear su acceso</AlertTitle>
+      <AlertDescription>
+        <p>Probá de nuevo desde su ficha con “Enviar acceso”.</p>
+      </AlertDescription>
+    </Alert>
+  )
+}
+
 function RegistrarPaciente({
   isOdonto,
   profesional,
@@ -189,27 +276,77 @@ function RegistrarPaciente({
   const [codificacion, setCodificacion] = useState<Codificacion>(CODIFICACION_VACIA)
   const [dientes, setDientes] = useState<Diente[]>([])
   const [saving, setSaving] = useState(false)
-  const [clave, setClave] = useState<string | null>(null)
+  // DNI que ya es paciente de la clínica: se ofrece cargar sus datos.
+  const [duplicado, setDuplicado] = useState<{ dni: string; fullName: string } | null>(null)
+  const [cargandoExistente, setCargandoExistente] = useState(false)
+  // Paciente existente elegido: la consulta se guarda en su historia.
+  const [existente, setExistente] = useState<Paciente | null>(null)
+  const [confirmarEmail, setConfirmarEmail] = useState(false)
+  const [resultado, setResultado] = useState<{ cuenta: CuentaPaciente; email: string } | null>(null)
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }))
 
-  async function guardar(e: React.FormEvent) {
+  async function verificarDni() {
+    const dni = form.dni.trim()
+    if (!dni || existente || duplicado?.dni === dni) return
+    try {
+      const r = await api.post<{ existe: boolean; fullName?: string }>("/pacient/existe-pacient", { dni })
+      setDuplicado(r.existe ? { dni, fullName: r.fullName || "" } : null)
+    } catch {
+      // Si falla, el alta igual lo detecta al guardar.
+    }
+  }
+
+  async function cargarExistente() {
+    if (!duplicado) return
+    setCargandoExistente(true)
+    try {
+      const data = await api.post<Paciente>("/pacient/get-data-pacient", { dni: duplicado.dni })
+      setExistente(data)
+      setDuplicado(null)
+      // Odontograma: arrancar del último conocido si todavía no marcó nada.
+      if (dientes.length === 0) setDientes(data.history?.[data.history.length - 1]?.dientes || [])
+    } catch {
+      toast.error("No se pudieron cargar los datos del paciente.")
+    } finally {
+      setCargandoExistente(false)
+    }
+  }
+
+  function usarOtroPaciente() {
+    setExistente(null)
+    setForm((f) => ({ ...f, dni: "" }))
+  }
+
+  function guardar(e: React.FormEvent) {
     e.preventDefault()
+    if (existente) {
+      void guardarConsultaExistente()
+      return
+    }
     const req = ["nombre", "dni", "telefono", "email", "sexo", "direccion", "fechaNacimiento"] as const
     if (req.some((k) => !form[k]) || !cobertura.idObraSocial) {
       toast.warning("Completá los datos personales obligatorios.")
       return
     }
+    if (duplicado?.dni === form.dni.trim()) {
+      toast.warning("Ese DNI ya es paciente de tu clínica. Cargá sus datos para seguir.")
+      return
+    }
+    // El email es por donde le llegan sus datos de acceso: se confirma antes de guardar.
+    setConfirmarEmail(true)
+  }
+
+  async function registrar() {
+    setConfirmarEmail(false)
     setSaving(true)
-    const password = generarContrasena(8)
     try {
-      await api.post("/pacient/regis-pacient", {
+      const r = await api.post<{ cuenta?: CuentaPaciente }>("/pacient/regis-pacient", {
         fullName: form.nombre,
         dni: form.dni,
-        password,
         telefono: form.telefono,
-        email: form.email,
+        email: form.email.trim(),
         sexo: form.sexo,
         direccion: form.direccion,
         fechaNacimiento: form.fechaNacimiento,
@@ -224,13 +361,46 @@ function RegistrarPaciente({
         ...(isOdonto ? { dientes } : {}),
         ...codificacionPayload(codificacion),
       })
-      setClave(password)
+      setResultado({ cuenta: r.cuenta || { estado: "error" }, email: form.email.trim() })
     } catch (err) {
+      if (errorCode(err) === "PACIENTE_EXISTENTE") {
+        setDuplicado({ dni: form.dni.trim(), fullName: "" })
+        toast.warning("Ese DNI ya es paciente de tu clínica. Cargá sus datos para seguir.")
+        return
+      }
       toast.error(
         err instanceof ApiError
           ? `No se pudo registrar: ${err.message}`
           : "No se pudo registrar el paciente."
       )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function guardarConsultaExistente() {
+    if (!existente) return
+    if (!form.sintomas && !form.diagnostico && !form.tratamiento && !codificacion.diagnosticos.length && !codificacion.practicas.length) {
+      toast.warning("Cargá al menos un dato de la consulta.")
+      return
+    }
+    setSaving(true)
+    try {
+      await api.post("/pacient/save-data-pacient", {
+        dni: existente.dni,
+        area,
+        profesional,
+        sintomas: form.sintomas,
+        diagnostico: form.diagnostico,
+        tratamiento: form.tratamiento,
+        fecha: new Date(),
+        ...(isOdonto ? { dientes } : {}),
+        ...codificacionPayload(codificacion),
+      })
+      toast.success(`Consulta guardada en la historia de ${existente.fullName}`)
+      onBack()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? `No guardado: ${err.message}` : "No se pudo guardar.")
     } finally {
       setSaving(false)
     }
@@ -248,45 +418,114 @@ function RegistrarPaciente({
             <h2 className="flex items-center gap-2 font-semibold">
               <User className="size-5 text-primary" /> Datos personales
             </h2>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <Field label="Nombre y apellido" htmlFor="nombre" required>
-                <Input id="nombre" className="h-10" value={form.nombre} onChange={set("nombre")} />
-              </Field>
-              <Field label="DNI" htmlFor="dni" required>
-                <Input id="dni" type="number" inputMode="numeric" className="h-10" value={form.dni} onChange={set("dni")} />
-              </Field>
-              <Field label="Teléfono" htmlFor="telefono" required>
-                <Input id="telefono" type="tel" className="h-10" value={form.telefono} onChange={set("telefono")} />
-              </Field>
-              <Field label="Email" htmlFor="email" required>
-                <Input id="email" type="email" className="h-10" value={form.email} onChange={set("email")} />
-              </Field>
-              <Field label="Sexo" htmlFor="sexo" required>
-                <SelectField
-                  id="sexo"
-                  value={form.sexo}
-                  onValueChange={(v) => setForm((f) => ({ ...f, sexo: v }))}
-                  options={SEXO}
-                />
-              </Field>
-              <Field label="Dirección" htmlFor="direccion" required>
-                <Input id="direccion" className="h-10" value={form.direccion} onChange={set("direccion")} />
-              </Field>
-              <Field label="Fecha de nacimiento" htmlFor="fechaNacimiento" required>
-                <Input id="fechaNacimiento" type="date" className="h-10" value={form.fechaNacimiento} onChange={set("fechaNacimiento")} />
-              </Field>
-              <Field label="Edad" htmlFor="edad">
-                <Input id="edad" type="number" className="h-10" value={form.edad} onChange={set("edad")} />
-              </Field>
-              <CoberturaFields value={cobertura} onChange={setCobertura} required idPrefix="reg" />
-            </div>
+            {existente ? (
+              <div className="mt-4 space-y-4">
+                <Alert>
+                  <UserCheck aria-hidden />
+                  <AlertTitle>Paciente ya registrado en tu clínica</AlertTitle>
+                  <AlertDescription>
+                    <p>La consulta se guarda en su historia clínica.</p>
+                  </AlertDescription>
+                </Alert>
+                <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {(
+                    [
+                      ["Nombre", existente.fullName],
+                      ["DNI", existente.dni],
+                      ["Email", existente.email],
+                      ["Teléfono", existente.telefono],
+                      ["Fecha de nacimiento", existente.fechaNacimiento],
+                      ["Obra social", existente.obraSocial],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <div key={label} className="flex min-w-0 flex-col">
+                      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+                      <dd className="break-words text-sm">{value || "—"}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <Button type="button" variant="outline" size="sm" onClick={usarOtroPaciente}>
+                  Cargar otro paciente
+                </Button>
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <Field label="Nombre y apellido" htmlFor="nombre" required>
+                  <Input id="nombre" className="h-10" value={form.nombre} onChange={set("nombre")} />
+                </Field>
+                <Field label="DNI" htmlFor="dni" required>
+                  <Input
+                    id="dni"
+                    type="number"
+                    inputMode="numeric"
+                    className="h-10"
+                    value={form.dni}
+                    onChange={set("dni")}
+                    onBlur={verificarDni}
+                  />
+                </Field>
+                {duplicado && duplicado.dni === form.dni.trim() && (
+                  <Alert className="sm:col-span-2">
+                    <UserCheck aria-hidden />
+                    <AlertTitle>
+                      {duplicado.fullName
+                        ? `${duplicado.fullName} ya es paciente de tu clínica`
+                        : "Ese DNI ya es paciente de tu clínica"}
+                    </AlertTitle>
+                    <AlertDescription>
+                      <p>No hace falta registrarlo de nuevo: cargá sus datos y seguí con la consulta.</p>
+                      <Button type="button" size="sm" onClick={cargarExistente} disabled={cargandoExistente}>
+                        {cargandoExistente ? <Loader2 className="animate-spin" /> : <UserCheck />}
+                        Cargar sus datos
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <Field label="Teléfono" htmlFor="telefono" required>
+                  <Input id="telefono" type="tel" className="h-10" value={form.telefono} onChange={set("telefono")} />
+                </Field>
+                <Field
+                  label="Email del paciente"
+                  htmlFor="email"
+                  required
+                  hint="Tiene que ser el email del paciente y estar bien escrito: ahí le enviamos sus datos para entrar a Medilu."
+                >
+                  <Input
+                    id="email"
+                    type="email"
+                    autoComplete="off"
+                    className="h-10"
+                    value={form.email}
+                    onChange={set("email")}
+                  />
+                </Field>
+                <Field label="Sexo" htmlFor="sexo" required>
+                  <SelectField
+                    id="sexo"
+                    value={form.sexo}
+                    onValueChange={(v) => setForm((f) => ({ ...f, sexo: v }))}
+                    options={SEXO}
+                  />
+                </Field>
+                <Field label="Dirección" htmlFor="direccion" required>
+                  <Input id="direccion" className="h-10" value={form.direccion} onChange={set("direccion")} />
+                </Field>
+                <Field label="Fecha de nacimiento" htmlFor="fechaNacimiento" required>
+                  <Input id="fechaNacimiento" type="date" className="h-10" value={form.fechaNacimiento} onChange={set("fechaNacimiento")} />
+                </Field>
+                <Field label="Edad" htmlFor="edad">
+                  <Input id="edad" type="number" className="h-10" value={form.edad} onChange={set("edad")} />
+                </Field>
+                <CoberturaFields value={cobertura} onChange={setCobertura} required idPrefix="reg" />
+              </div>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4 sm:p-6">
             <h2 className="flex items-center gap-2 font-semibold">
-              <Stethoscope className="size-5 text-primary" /> Primera consulta
+              <Stethoscope className="size-5 text-primary" /> {existente ? "Nueva consulta" : "Primera consulta"}
             </h2>
             <div className="mt-4 space-y-4">
               <Field label="Síntomas" htmlFor="sintomas">
@@ -298,7 +537,7 @@ function RegistrarPaciente({
               <Field label="Tratamiento" htmlFor="tratamiento">
                 <DictationTextarea id="tratamiento" rows={2} value={form.tratamiento} onValueChange={(v) => setForm((f) => ({ ...f, tratamiento: v }))} />
               </Field>
-              <CodificacionEditor value={codificacion} onChange={setCodificacion} />
+              <CodificacionEditor value={codificacion} onChange={setCodificacion} dni={existente?.dni} />
             </div>
           </CardContent>
         </Card>
@@ -318,28 +557,45 @@ function RegistrarPaciente({
         )}
 
         <Button type="submit" size="lg" disabled={saving}>
-          {saving ? <Loader2 className="animate-spin" /> : <UserPlus />}
-          Registrar paciente
+          {saving ? <Loader2 className="animate-spin" /> : existente ? <Save /> : <UserPlus />}
+          {existente ? "Guardar consulta" : "Registrar paciente"}
         </Button>
       </form>
 
-      <Dialog open={!!clave} onOpenChange={(o) => !o && (setClave(null), onBack())}>
+      <Dialog open={confirmarEmail} onOpenChange={setConfirmarEmail}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿El email del paciente es correcto?</DialogTitle>
+            <DialogDescription>
+              Le vamos a enviar sus datos de acceso a Medilu a este email. Si está mal escrito o no
+              es suyo, otra persona podría entrar a su historia clínica.
+            </DialogDescription>
+          </DialogHeader>
+          <p className="rounded-lg border border-border bg-muted/40 p-4 text-center font-medium break-all">
+            {form.email.trim()}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmarEmail(false)}>
+              <Pencil /> Corregir
+            </Button>
+            <Button onClick={registrar}>
+              <UserPlus /> Sí, registrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!resultado} onOpenChange={(o) => !o && (setResultado(null), onBack())}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Paciente registrado</DialogTitle>
-            <DialogDescription>
-              Compartí esta clave con el paciente para que consulte su historia
-              clínica.
-            </DialogDescription>
+            <DialogDescription>La primera consulta quedó guardada en su historia clínica.</DialogDescription>
           </DialogHeader>
-          <div className="rounded-lg border border-border bg-muted/40 p-4 text-center">
-            <p className="text-xs text-muted-foreground">Clave de acceso</p>
-            <p className="mt-1 font-mono text-xl font-semibold">{clave}</p>
-          </div>
+          {resultado && <AccesoResultado cuenta={resultado.cuenta} email={resultado.email} />}
           <DialogFooter>
             <Button
               onClick={() => {
-                setClave(null)
+                setResultado(null)
                 onBack()
               }}
             >
@@ -349,6 +605,115 @@ function RegistrarPaciente({
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+/** Crea la cuenta de un paciente de la clínica que todavía no tiene acceso. */
+function EnviarAccesoDialog({
+  paciente,
+  open,
+  onOpenChange,
+  onEnviado,
+}: {
+  paciente: Paciente
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  onEnviado: () => void
+}) {
+  // El contenido se desmonta al cerrar, así que cada apertura arranca de cero.
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <EnviarAccesoContenido
+          paciente={paciente}
+          onClose={() => onOpenChange(false)}
+          onEnviado={onEnviado}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function EnviarAccesoContenido({
+  paciente,
+  onClose,
+  onEnviado,
+}: {
+  paciente: Paciente
+  onClose: () => void
+  onEnviado: () => void
+}) {
+  const [email, setEmail] = useState(paciente.email || "")
+  const [enviando, setEnviando] = useState(false)
+  const [resultado, setResultado] = useState<{ cuenta: CuentaPaciente; email: string } | null>(null)
+
+  async function enviar(e: React.FormEvent) {
+    e.preventDefault()
+    const destino = email.trim()
+    if (!destino) {
+      toast.warning("Cargá el email del paciente.")
+      return
+    }
+    setEnviando(true)
+    try {
+      const r = await api.post<{ cuenta: CuentaPaciente }>("/pacient/enviar-acceso", {
+        dni: paciente.dni,
+        email: destino,
+      })
+      setResultado({ cuenta: r.cuenta, email: destino })
+      if (r.cuenta.estado === "creada") onEnviado()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "No se pudo enviar el acceso.")
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Enviar acceso a Medilu</DialogTitle>
+        <DialogDescription>
+          {paciente.fullName} todavía no tiene cuenta. Le creamos una y le enviamos sus datos de
+          acceso por email para que vea su historia clínica.
+        </DialogDescription>
+      </DialogHeader>
+      {resultado ? (
+        <>
+          <AccesoResultado cuenta={resultado.cuenta} email={resultado.email} />
+          <DialogFooter>
+            <Button onClick={onClose}>Listo</Button>
+          </DialogFooter>
+        </>
+      ) : (
+        <form onSubmit={enviar} className="space-y-4">
+          <Field
+            label="Email del paciente"
+            htmlFor="acceso-email"
+            required
+            hint="Revisá que sea el suyo y esté bien escrito: ahí le llegan los datos para entrar."
+          >
+            <Input
+              id="acceso-email"
+              type="email"
+              autoComplete="off"
+              className="h-10"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </Field>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={enviando}>
+              {enviando ? <Loader2 className="animate-spin" /> : <Mail />}
+              Enviar acceso
+            </Button>
+          </DialogFooter>
+        </form>
+      )}
+    </>
   )
 }
 
@@ -380,6 +745,7 @@ function BuscarPaciente({
   const [editCob, setEditCob] = useState<Cobertura | null>(null)
   const [savingCob, setSavingCob] = useState(false)
   const [fichaOs, setFichaOs] = useState(false)
+  const [enviarAcceso, setEnviarAcceso] = useState(false)
 
   async function guardarCobertura() {
     if (!paciente || !editCob) return
@@ -511,6 +877,11 @@ function BuscarPaciente({
               </Link>
             </Button>
           )}
+          {paciente.tieneCuenta === false && (
+            <Button variant="outline" onClick={() => setEnviarAcceso(true)}>
+              <Mail /> Enviar acceso
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setFichaOs(true)}>
             <ClipboardList /> Ficha obra social
           </Button>
@@ -599,6 +970,15 @@ function BuscarPaciente({
                   <span>
                     <span className="font-medium text-muted-foreground">Profesional: </span>
                     {e.profesional}
+                    {e.importado && (
+                      <Badge
+                        variant="outline"
+                        className="ml-2 font-normal"
+                        title="Vino de otro sistema: la fecha y el profesional son los del archivo importado."
+                      >
+                        Importado
+                      </Badge>
+                    )}
                   </span>
                   <span>
                     <span className="font-medium text-muted-foreground">Área: </span>
@@ -642,6 +1022,13 @@ function BuscarPaciente({
       ) : (
         <p className="mt-4 text-sm text-muted-foreground">No hay consultas registradas.</p>
       )}
+
+      <EnviarAccesoDialog
+        paciente={paciente}
+        open={enviarAcceso}
+        onOpenChange={setEnviarAcceso}
+        onEnviado={() => setPaciente({ ...paciente, tieneCuenta: true })}
+      />
 
       <FichaObraSocialDialog
         open={fichaOs}

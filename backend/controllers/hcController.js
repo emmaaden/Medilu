@@ -14,6 +14,7 @@
 const { supabase } = require('../config/supabaseClient');
 const { filasParaRegistro, serializarDiente } = require('../utils/odontograma');
 const { registrarAcceso } = require('../utils/bitacora');
+const { puedeSumarFicha } = require('../utils/membresias');
 const { serializarCodificacion, SELECT_CODIFICACION } = require('../utils/codificacion');
 
 const FORMATO = 'medilu.hc';
@@ -55,7 +56,7 @@ async function construirExport(clinicaId, pacienteIds, meta) {
 
         const { data: regs, error: rErr } = await supabase
             .from('registro_clinico')
-            .select(`id, id_paciente, fecha, profesional_nombre, area, sintomas, diagnostico, tratamiento,
+            .select(`id, id_paciente, fecha, profesional_nombre, area, sintomas, diagnostico, tratamiento, origen,
                 registro_diente ( numero, condicion, cara, estado, notas ), ${SELECT_CODIFICACION}`)
             .in('id_paciente', pacienteIds)
             .eq('clinica_id', clinicaId)
@@ -66,6 +67,7 @@ async function construirExport(clinicaId, pacienteIds, meta) {
             registrosPorPaciente.get(r.id_paciente).push({
                 origenId: r.id, // id del registro en ESTE sistema (para dedupe al re-importar)
                 fecha: r.fecha,
+                importado: !!r.origen, // vino de otro sistema: fecha y autor no los cargó Medilu
                 profesional: r.profesional_nombre || null,
                 area: r.area || null,
                 sintomas: r.sintomas || null,
@@ -246,6 +248,13 @@ exports.importar = async (req, res) => {
             return res.status(400).json({ error: 'Archivo inválido: no es un export de HC de Medilu.' });
         }
 
+        // Todo registro importado queda marcado como tal (`origen` siempre empieza con
+        // 'import'): la fecha y el profesional vienen del archivo, no los registró Medilu,
+        // y así se muestra en la HC y en los PDF (auditoría 2026-10-15, #9).
+        const etiquetaOrigen = String(doc.origen || '').trim().slice(0, 60);
+        const origen = etiquetaOrigen ? `import:${etiquetaOrigen}` : 'import';
+        const ahora = Date.now();
+
         // Fase K: catálogos para emparejar obra social y diagnósticos.
         const [{ data: oss }, { data: cies }] = await Promise.all([
             supabase.from('obra_social').select('id, nombre, sigla')
@@ -275,7 +284,7 @@ exports.importar = async (req, res) => {
                 // 1. Resolver o crear el paciente por DNI dentro de la clínica.
                 const { data: personaEx, error: persErr } = await supabase
                     .from('persona')
-                    .select('id, paciente ( id )')
+                    .select('id, id_auth, paciente ( id )')
                     .eq('clinica_id', clinicaId)
                     .eq('dni', dni)
                     .maybeSingle();
@@ -287,7 +296,12 @@ exports.importar = async (req, res) => {
                     if (pac?.id) {
                         pacienteId = pac.id;
                     } else {
-                        // persona existe pero no es paciente: crear su fila paciente.
+                        // persona existe pero no es paciente: crear su fila paciente, solo si
+                        // es del equipo o no tiene cuenta (auditoría 2026-10-15, #2).
+                        if (!(await puedeSumarFicha(supabase, personaEx, clinicaId))) {
+                            resumen.errores.push(`DNI ${dni}: ya hay una persona con ese DNI en la clínica que no es paciente ni del equipo; se omitió (escribinos a soporte).`);
+                            continue;
+                        }
                         const { data: nuevoPac, error: e } = await supabase
                             .from('paciente').insert({ id_persona: personaEx.id, ...coberturaImportada(p, catalogoOS) })
                             .select('id').single();
@@ -299,6 +313,7 @@ exports.importar = async (req, res) => {
                     const { data: nuevaPersona, error: e1 } = await supabase
                         .from('persona')
                         .insert({
+                            id_auth: null, // sin cuenta (la columna tiene DEFAULT auth.uid())
                             clinica_id: clinicaId,
                             dni,
                             nombre: p.nombre || null,
@@ -331,6 +346,18 @@ exports.importar = async (req, res) => {
                     const origenId = r?.origenId != null ? String(r.origenId) : null;
                     if (origenId && yaImportados.has(origenId)) { resumen.registrosOmitidos++; continue; }
 
+                    // Fecha del archivo: tiene que ser válida y no futura. Sin fecha, la del import.
+                    let fecha = new Date(ahora).toISOString();
+                    if (r?.fecha) {
+                        const f = new Date(r.fecha);
+                        if (Number.isNaN(f.getTime()) || f.getTime() > ahora) {
+                            resumen.registrosOmitidos++;
+                            resumen.errores.push(`DNI ${dni}: un registro tiene una fecha inválida o futura (${String(r.fecha).slice(0, 40)}); se omitió.`);
+                            continue;
+                        }
+                        fecha = f.toISOString();
+                    }
+
                     const { data: nuevoReg, error: rErr } = await supabase
                         .from('registro_clinico')
                         .insert({
@@ -339,11 +366,11 @@ exports.importar = async (req, res) => {
                             id_profesional: null, // autoría externa; se conserva el nombre snapshot
                             profesional_nombre: r.profesional || null,
                             area: r.area || null,
-                            fecha: r.fecha || new Date().toISOString(),
+                            fecha,
                             sintomas: r.sintomas || null,
                             diagnostico: r.diagnostico || null,
                             tratamiento: r.tratamiento || null,
-                            origen: doc.origen || 'import',
+                            origen,
                             origen_id: origenId,
                         })
                         .select('id').single();
@@ -373,7 +400,7 @@ exports.importar = async (req, res) => {
         await registrarAcceso(req, {
             accion: 'importar_hc',
             detalle: {
-                origen: doc.origen || null,
+                origen,
                 pacientesCreados: resumen.pacientesCreados,
                 pacientesExistentes: resumen.pacientesExistentes,
                 registrosImportados: resumen.registrosImportados,
