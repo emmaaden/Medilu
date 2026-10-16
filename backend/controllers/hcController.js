@@ -17,6 +17,7 @@ const { registrarAcceso } = require('../utils/bitacora');
 const { puedeSumarFicha } = require('../utils/membresias');
 const { serializarCodificacion, SELECT_CODIFICACION } = require('../utils/codificacion');
 const { errorDb } = require('../utils/errores');
+const { parseFechaNacimiento } = require('../utils/fechaNacimiento');
 
 const FORMATO = 'medilu.hc';
 // Exports generados con los nombres anteriores (AgendaSalud, Agenlu); se siguen aceptando al importar.
@@ -169,20 +170,6 @@ exports.pacientesEnAlcance = async (req, res) => {
     }
 };
 
-// Normaliza fecha de nacimiento a 'YYYY-MM-DD' (acepta ISO o dd/mm/yyyy).
-function normFechaNac(f) {
-    if (!f) return null;
-    const s = String(f);
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-    if (m) {
-        const [, d, mo, y] = m;
-        const yr = y.length === 2 ? `20${y}` : y;
-        return `${yr}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
-    }
-    return null;
-}
-
 // Fase K: columnas de cobertura para un paciente importado. La obra social se empareja
 // por nombre con el catálogo visible para la clínica (global o propio); si no está, queda
 // solo el texto (como antes).
@@ -311,6 +298,11 @@ exports.importar = async (req, res) => {
                     }
                     resumen.pacientesExistentes++;
                 } else {
+                    // Una fecha imposible no frena la importación: el paciente se carga sin ella.
+                    const fnac = parseFechaNacimiento(p.fechaNacimiento);
+                    if (!fnac.ok) {
+                        resumen.errores.push(`DNI ${dni}: la fecha de nacimiento (${String(p.fechaNacimiento).slice(0, 40)}) no es válida; se cargó sin ella.`);
+                    }
                     const { data: nuevaPersona, error: e1 } = await supabase
                         .from('persona')
                         .insert({
@@ -319,7 +311,7 @@ exports.importar = async (req, res) => {
                             dni,
                             nombre: p.nombre || null,
                             apellido: p.apellido || null,
-                            fecha_nacimiento: normFechaNac(p.fechaNacimiento),
+                            fecha_nacimiento: fnac.ok ? fnac.fecha : null,
                             sexo: p.sexo || null,
                             telefono: p.telefono || null,
                             email: p.email || null,

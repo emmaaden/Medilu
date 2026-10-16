@@ -15,6 +15,7 @@ import { COBERTURA_VACIA, coberturaPayload, type Cobertura } from "@/lib/catalog
 import { Container, PageHero } from "@/components/site/Section"
 import { api, ApiError } from "@/lib/api"
 import { useUser } from "@/hooks/useUser"
+import { errorFechaNacimiento, FECHA_NAC_MIN, hoyAR } from "@/lib/fecha"
 
 const schema = z.object({
   nombre: z.string().trim().min(1, "Ingresá tu nombre").max(120),
@@ -23,7 +24,10 @@ const schema = z.object({
   telefono: z.string().max(30).optional().or(z.literal("")),
   direccion: z.string().max(200).optional().or(z.literal("")),
   sexo: z.string().max(20).optional().or(z.literal("")),
-  fechaNacimiento: z.string().max(40).optional().or(z.literal("")),
+  fechaNacimiento: z
+    .string()
+    .optional()
+    .refine((v) => !errorFechaNacimiento(v ?? ""), (v) => ({ message: errorFechaNacimiento(v ?? "") ?? "" })),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -192,7 +196,10 @@ export default function MiPerfil() {
                       <Input
                         id="fechaNacimiento"
                         type="date"
+                        min={FECHA_NAC_MIN}
+                        max={hoyAR()}
                         className="h-10"
+                        aria-invalid={!!errors.fechaNacimiento}
                         {...register("fechaNacimiento")}
                       />
                     </Field>
