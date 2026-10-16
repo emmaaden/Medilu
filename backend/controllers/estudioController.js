@@ -17,6 +17,7 @@ const crypto = require('crypto');
 const { supabase } = require('../config/supabaseClient');       // service_role (storage / búsqueda)
 const { getUserSupabase } = require('../middleware/userSupabase'); // por-JWT (RLS de las tablas)
 const { misPacienteIds } = require('../utils/fichasPaciente');
+const { errorDb } = require('../utils/errores');
 
 const BUCKET = 'estudios';
 const SIGNED_TTL = 120; // segundos de validez de la URL firmada
@@ -95,7 +96,7 @@ exports.listar = async (req, res) => {
             // los compartidos con la cuenta si además es profesional).
             .in('id_paciente', await misPacienteIds(req.session.user.id))
             .order('subido_en', { ascending: false });
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         return res.json({ estudios: (data || []).map(vistaEstudio) });
     } catch (err) {
@@ -193,7 +194,7 @@ exports.actualizar = async (req, res) => {
 
         // La RLS de UPDATE solo deja al paciente dueño.
         const { data, error } = await db.from('estudio').update(patch).eq('id', id).select('id');
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         if (!data || data.length === 0) return res.status(404).json({ error: 'Estudio no encontrado.' });
 
         return res.json({ message: 'Estudio actualizado' });
@@ -217,7 +218,7 @@ exports.eliminar = async (req, res) => {
         const { data: fila } = await db.from('estudio').select('id, archivo_path, id_paciente').eq('id', id).maybeSingle();
 
         const { data: borradas, error } = await db.from('estudio').delete().eq('id', id).select('id, archivo_path, id_paciente');
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         if (!borradas || borradas.length === 0) return res.status(404).json({ error: 'Estudio no encontrado.' });
 
         // Solo se borra el objeto si está en la carpeta del paciente (#11).
@@ -281,7 +282,7 @@ exports.revocar = async (req, res) => {
             .delete()
             .eq('id_estudio', id)
             .eq('id_profesional', idProfesional);
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         return res.json({ message: 'Acceso revocado' });
     } catch (err) {
@@ -356,7 +357,7 @@ exports.compartidosConmigo = async (req, res) => {
                 'estudio_compartido!inner ( compartido_en )'
             )
             .order('subido_en', { ascending: false });
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         const estudios = (data || []).map((e) => {
             const comp = Array.isArray(e.estudio_compartido) ? e.estudio_compartido[0] : e.estudio_compartido;
@@ -398,7 +399,7 @@ exports.descargar = async (req, res) => {
             .select('id, archivo_path, id_paciente')
             .eq('id', id)
             .maybeSingle();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         if (!est) return res.status(404).json({ error: 'Estudio no encontrado.' });
         const path = pathPropio(est);
         if (!path) return res.status(404).json({ error: 'Estudio no encontrado.' });

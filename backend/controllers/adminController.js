@@ -12,6 +12,7 @@ const { supabase } = require('../config/supabaseClient');
 const { resolverObraSocial } = require('../utils/cobertura');
 const planes = require('../utils/planes');
 const { invalidarMembresias } = require('../middleware/sesionVigente');
+const { errorDb } = require('../utils/errores');
 
 // GET /admin/miembros — profesionales/recepción/auditores/admins de la clínica activa.
 exports.listarMiembros = async (req, res) => {
@@ -30,7 +31,7 @@ exports.listarMiembros = async (req, res) => {
             `)
             .eq('clinica_id', clinicaId)
             .order('creada_en', { ascending: true });
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         const miembros = (data || []).map((m) => {
             // PostgREST puede devolver el embed 1:1 como objeto o como array.
@@ -70,7 +71,7 @@ exports.obtenerClinica = async (req, res) => {
             .select('nombre, slug, direccion, descripcion, turnos_online')
             .eq('id', clinicaId)
             .maybeSingle();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         if (!data) return res.status(404).json({ error: 'Clínica no encontrada.' });
 
         return res.json({ clinica: data });
@@ -95,7 +96,7 @@ exports.actualizarClinica = async (req, res) => {
             .eq('id', clinicaId)
             .select('nombre, slug, direccion, descripcion, turnos_online')
             .single();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         return res.json({ message: 'Clínica actualizada', clinica: data });
     } catch (err) {
@@ -117,7 +118,7 @@ exports.actualizarTurnosOnline = async (req, res) => {
             .eq('id', clinicaId)
             .select('nombre, slug, direccion, descripcion, turnos_online')
             .single();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         return res.json({ message: 'Turnos online actualizados', clinica: data });
     } catch (err) {
@@ -152,7 +153,7 @@ exports.actualizarMiembro = async (req, res) => {
             .eq('id', membresiaId)
             .eq('clinica_id', clinicaId)
             .maybeSingle();
-        if (tErr) return res.status(400).json({ error: tErr.message });
+        if (tErr) return errorDb(res, tErr);
         if (!target) return res.status(404).json({ error: 'Miembro no encontrado en esta clínica.' });
 
         // Fase L: reactivar a alguien, o pasarlo a un rol que ocupa otro tipo de lugar
@@ -181,7 +182,7 @@ exports.actualizarMiembro = async (req, res) => {
                 .eq('rol', 'admin')
                 .eq('activo', true)
                 .neq('id', membresiaId);
-            if (cErr) return res.status(400).json({ error: cErr.message });
+            if (cErr) return errorDb(res, cErr);
             if (!count || count === 0) {
                 return res.status(409).json({
                     error: 'No podés dejar la clínica sin ningún administrador activo.',
@@ -225,7 +226,7 @@ exports.actualizarMiembro = async (req, res) => {
             .eq('clinica_id', clinicaId)
             .select('id, rol, activo, alcance_obra_social, alcance_id_obra_social')
             .single();
-        if (uErr) return res.status(400).json({ error: uErr.message });
+        if (uErr) return errorDb(res, uErr);
         // La sesión de esa persona toma el cambio en su próxima request (#7).
         invalidarMembresias(target.id_persona);
 

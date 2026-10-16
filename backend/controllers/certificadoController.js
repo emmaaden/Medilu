@@ -12,6 +12,7 @@ const { supabase } = require('../config/supabaseClient');       // service_role 
 const { getUserSupabase } = require('../middleware/userSupabase'); // por-JWT (RLS de la tabla)
 const { misPacienteIds } = require('../utils/fichasPaciente');
 const { generarCertificadoPdf } = require('../utils/certificadoPdf');
+const { errorDb } = require('../utils/errores');
 
 const FIRMA_BUCKET = 'firmas';
 const CERT_BUCKET = 'certificados';
@@ -276,7 +277,7 @@ exports.listarPorPaciente = async (req, res) => {
             .select('id, tipo, motivo, diagnostico, indicaciones, dias_reposo, paciente_nombre, profesional_nombre, archivo_mime, emitido_en')
             .eq('id_paciente', paciente.idPaciente)
             .order('emitido_en', { ascending: false });
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         return res.json({
             paciente: { nombre: paciente.nombre, dni: paciente.dni },
@@ -300,7 +301,7 @@ exports.misCertificados = async (req, res) => {
             // Fase O: los de todas sus fichas; solo los propios aunque la cuenta sea staff.
             .in('id_paciente', await misPacienteIds(req.session.user.id))
             .order('emitido_en', { ascending: false });
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         return res.json({ certificados: (data || []).map(vista) });
     } catch (err) {
@@ -325,7 +326,7 @@ exports.descargar = async (req, res) => {
             .select('id, archivo_path, clinica_id')
             .eq('id', id)
             .maybeSingle();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         if (!cert) return res.status(404).json({ error: 'Certificado no encontrado.' });
         // El archivo tiene que estar en la carpeta de la clínica del certificado: la fila
         // la puede insertar un miembro por la API y acá se firma con service_role (#11).

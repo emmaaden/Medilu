@@ -47,6 +47,7 @@ const schemas = require('./validators/schemas');
 const planes = require('./utils/planes');
 const { soloLectura } = require('./middleware/plan');
 const { sesionVigente } = require('./middleware/sesionVigente');
+const { manejadorErrores } = require('./utils/errores');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -683,6 +684,12 @@ if (isProd) {
         return res.sendFile(path.join(spaDist, 'index.html'));
     });
 }
+
+// ---------------------------------------------------------------------------
+// Errores no capturados: el detalle va al log, al navegador un mensaje genérico
+// (sin esto, Express devuelve el stack trace en HTML fuera de producción).
+// ---------------------------------------------------------------------------
+app.use(manejadorErrores);
 
 // ---------------------------------------------------------------------------
 // Arranque

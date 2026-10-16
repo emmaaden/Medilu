@@ -18,6 +18,7 @@ const { registrarAcceso, nombreActor } = require('../utils/bitacora');
 const { listarObrasSociales } = require('../utils/cobertura');
 const { serializarCodificacion, SELECT_CODIFICACION } = require('../utils/codificacion');
 const { ymdAR, hoyAR } = require('../utils/fechaAR');
+const { errorDb } = require('../utils/errores');
 
 const ERR_SESION = { status: 401, body: { error: 'Tu sesión expiró. Iniciá sesión de nuevo.' } };
 const PAGE_SIZE = 20;
@@ -116,7 +117,7 @@ exports.listarRegistros = async (req, res) => {
         const { data, error, count } = await query
             .order('fecha', { ascending: false })
             .range(from, to);
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         const registros = (data || []).map((r) => {
             const pac = uno(r.paciente);
@@ -163,7 +164,7 @@ exports.filtros = async (req, res) => {
             .select('persona:id_persona ( nombre, apellido, profesional ( id ) )')
             .eq('clinica_id', clinicaId)
             .in('rol', ['admin', 'profesional']);
-        if (mErr) return res.status(400).json({ error: mErr.message });
+        if (mErr) return errorDb(res, mErr);
 
         const profesionales = (miembros || [])
             .map((m) => {
@@ -214,7 +215,7 @@ exports.detalleRegistro = async (req, res) => {
             .eq('id', id)
             .eq('clinica_id', clinicaId)
             .maybeSingle();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         if (!reg) return res.status(404).json({ error: 'Registro no encontrado.' });
 
         const [{ data: revs, error: rErr }, { data: previos, error: hErr }] = await Promise.all([
@@ -230,8 +231,8 @@ exports.detalleRegistro = async (req, res) => {
                 .order('fecha', { ascending: false })
                 .limit(50),
         ]);
-        if (rErr) return res.status(400).json({ error: rErr.message });
-        if (hErr) return res.status(400).json({ error: hErr.message });
+        if (rErr) return errorDb(res, rErr);
+        if (hErr) return errorDb(res, hErr);
 
         const pac = uno(reg.paciente);
         const per = uno(pac?.persona);
@@ -304,7 +305,7 @@ exports.revisar = async (req, res) => {
             .eq('id', id)
             .eq('clinica_id', clinicaId)
             .maybeSingle();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         if (!reg) return res.status(404).json({ error: 'Registro no encontrado.' });
 
         const { estado, comentario } = req.body;
@@ -328,14 +329,14 @@ exports.revisar = async (req, res) => {
             })
             .select('id, estado, checklist, comentario, auditor_nombre, creado_en, respuesta, respondido_en')
             .single();
-        if (iErr) return res.status(400).json({ error: iErr.message });
+        if (iErr) return errorDb(res, iErr);
 
         const { error: uErr } = await supabase
             .from('registro_clinico')
             .update({ auditoria_estado: estado })
             .eq('id', reg.id)
             .eq('clinica_id', clinicaId);
-        if (uErr) return res.status(400).json({ error: uErr.message });
+        if (uErr) return errorDb(res, uErr);
 
         await registrarAcceso(req, {
             accion: 'revisar',
@@ -375,7 +376,7 @@ exports.observaciones = async (req, res) => {
             .in('auditoria_estado', ['observado', 'rechazado', 'respondido'])
             .order('fecha', { ascending: false })
             .limit(100);
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         const observaciones = (data || [])
             .map((r) => {
@@ -429,7 +430,7 @@ exports.responder = async (req, res) => {
             .eq('id', revisionId)
             .eq('clinica_id', clinicaId)
             .maybeSingle();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         // Solo el autor del registro responde (un admin ve todas, pero no responde por otros).
         if (!rev || !idRole || rev.id_profesional !== idRole) {
             return res.status(404).json({ error: 'Observación no encontrada.' });
@@ -464,7 +465,7 @@ exports.responder = async (req, res) => {
             .is('respuesta', null) // evita pisar una respuesta concurrente
             .select('id, estado, checklist, comentario, auditor_nombre, creado_en, respuesta, respondido_en')
             .maybeSingle();
-        if (uErr) return res.status(400).json({ error: uErr.message });
+        if (uErr) return errorDb(res, uErr);
         if (!upd) return res.status(409).json({ error: 'Esta observación ya fue respondida.' });
 
         const { error: eErr } = await supabase
@@ -472,7 +473,7 @@ exports.responder = async (req, res) => {
             .update({ auditoria_estado: 'respondido' })
             .eq('id', rev.id_registro)
             .eq('clinica_id', clinicaId);
-        if (eErr) return res.status(400).json({ error: eErr.message });
+        if (eErr) return errorDb(res, eErr);
 
         await registrarAcceso(req, {
             accion: 'responder',
@@ -512,7 +513,7 @@ exports.bitacora = async (req, res) => {
         const { data, error, count } = await query
             .order('creado_en', { ascending: false })
             .range(from, to);
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         const accesos = (data || []).map((a) => ({
             id: a.id,
@@ -558,7 +559,7 @@ exports.resumen = async (req, res) => {
             .eq('clinica_id', clinicaId);
         query = filtrarFechas(query, 'fecha', q);
         const { data, error } = await query.limit(LIMITE_RESUMEN);
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         const estados = { pendiente: 0, aprobado: 0, observado: 0, rechazado: 0, respondido: 0 };
         const porProf = new Map();
@@ -628,7 +629,7 @@ exports.cruce = async (req, res) => {
             .eq('clinica_id', clinicaId);
         rq = filtrarFechas(rq, 'fecha', q);
         const { data: registros, error: rErr } = await rq.limit(LIMITE_CRUCE);
-        if (rErr) return res.status(400).json({ error: rErr.message });
+        if (rErr) return errorDb(res, rErr);
 
         // Turnos que ya empezaron (no cancelados) en el período.
         let tq = supabase
@@ -639,7 +640,7 @@ exports.cruce = async (req, res) => {
             .lte('inicio', new Date().toISOString());
         tq = filtrarFechas(tq, 'inicio', q);
         const { data: turnosRaw, error: tErr } = await tq.limit(LIMITE_CRUCE);
-        if (tErr) return res.status(400).json({ error: tErr.message });
+        if (tErr) return errorDb(res, tErr);
 
         // Email -> paciente (para turnos de invitados), con los pacientes de los registros.
         const pacientePorEmail = new Map();

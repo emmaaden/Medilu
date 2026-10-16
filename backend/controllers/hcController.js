@@ -16,6 +16,7 @@ const { filasParaRegistro, serializarDiente } = require('../utils/odontograma');
 const { registrarAcceso } = require('../utils/bitacora');
 const { puedeSumarFicha } = require('../utils/membresias');
 const { serializarCodificacion, SELECT_CODIFICACION } = require('../utils/codificacion');
+const { errorDb } = require('../utils/errores');
 
 const FORMATO = 'medilu.hc';
 // Exports generados con los nombres anteriores (AgendaSalud, Agenlu); se siguen aceptando al importar.
@@ -150,7 +151,7 @@ exports.pacientesEnAlcance = async (req, res) => {
             .from('paciente')
             .select('id, persona:id_persona ( dni, nombre, apellido ), registro_clinico ( count )')
             .in('id', ids);
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         const pacientes = (pacs || []).map((p) => {
             const per = Array.isArray(p.persona) ? p.persona[0] : p.persona;

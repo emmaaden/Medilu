@@ -5,6 +5,7 @@
 const { getUserSupabase } = require('../middleware/userSupabase');
 const { supabase } = require('../config/supabaseClient');
 const { normalizarDia } = require('../utils/disponibilidad');
+const { errorDb } = require('../utils/errores');
 
 const ERR_SESION = { error: 'Tu sesión expiró. Iniciá sesión de nuevo.' };
 const ERR_CLINICA = { error: 'Elegí una clínica para cargar tus horarios.' };
@@ -63,7 +64,7 @@ exports.saveHours = async (req, res) => {
             .select();
 
         if (error) {
-            return res.status(400).json({ error: error.message });
+            return errorDb(res, error);
         }
 
         if (!data || data.length === 0) {
@@ -110,7 +111,7 @@ exports.insertHours = async (req, res) => {
             .select();
 
         if (error) {
-            return res.status(400).json({ error: error.message });
+            return errorDb(res, error);
         }
 
         res.status(201).json({
@@ -144,7 +145,7 @@ exports.getHours = async (req, res) => {
 
         if (error) {
             console.error("Error obteniendo el horario del profesional:", error);
-            return res.status(400).json({ error: error.message });
+            return errorDb(res, error);
         }
 
         if (data.length === 0) {
@@ -176,7 +177,7 @@ exports.deleteHours = async (req, res) => {
 
         if (error) {
             console.error("Error obteniendo el horario del profesional:", error);
-            return res.status(400).json({ error: error.message });
+            return errorDb(res, error);
         }
 
         return res.status(200).json({ success: true, message: 'Horario borrado con exito' });

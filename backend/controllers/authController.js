@@ -9,6 +9,7 @@ const { vencimientoLocal } = require('../middleware/userSupabase');
 const { cerrarOtrasSesiones, regenerarSesion } = require('../utils/sesiones');
 const { vencido: codigoVencido, DIAS_VIGENCIA: DIAS_VIGENCIA_CODIGO } = require('../utils/codigoActivacion');
 const { layoutMail, parrafo, fuerte, boton, aviso } = require('../utils/emailLayout');
+const { errorDb, registrarError } = require('../utils/errores');
 require('dotenv').config();
 
 // service_role: SALTEA la RLS. Se usa SOLO para operaciones sobre tablas.
@@ -158,7 +159,7 @@ exports.register = async (req, res) => {
             password,
             options: { data: { consentimiento }, emailRedirectTo: `${urlBase(req)}/login` },
         });
-        if (error) { return res.status(400).json({ error: error.message }); }
+        if (error) { return errorDb(res, error); }
 
         const user = data.user;
         if (!user) {
@@ -547,7 +548,8 @@ exports.reenviarConfirmacion = async (req, res) => {
 exports.logout = (req, res) => {
     req.session.destroy(err => {
         if (err) {
-            return res.status(500).json({ error: 'Error al cerrar sesión', err });
+            registrarError(err, 'logout');
+            return res.status(500).json({ error: 'Error al cerrar sesión' });
         }
         res.status(200).json({ message: 'Sesión cerrada exitosamente' });
     });
