@@ -18,7 +18,13 @@ const { filasParaRegistro, serializarDiente } = require('../utils/odontograma');
 const { registrarAcceso } = require('../utils/bitacora');
 const { columnasCobertura } = require('../utils/cobertura');
 const { supabase } = require('../config/supabaseClient');
-const { crearCuentaPaciente, buscarAutoregistrado, avisarVinculacion, nombreClinica } = require('../utils/cuentaPaciente');
+const {
+    crearCuentaPaciente,
+    buscarAutoregistrado,
+    avisarVinculacion,
+    nombreClinica,
+    obtenerCodigoVinculacion,
+} = require('../utils/cuentaPaciente');
 const { puedeSumarFicha } = require('../utils/membresias');
 const {
     prepararCodificacion,
@@ -154,6 +160,20 @@ async function insertRegistro(db, idPaciente, prof, body, cod) {
     return reg.id;
 }
 
+// Fase V: paciente cargado sin email (no tiene cuenta): se le genera el código de
+// vinculación para que el profesional se lo dé. No rompe el alta si falla (el
+// código se puede pedir después desde la ficha).
+async function conCodigoSiFaltaEmail(req, personaId, cuenta) {
+    if (cuenta.estado !== 'sin_email') return cuenta;
+    try {
+        const vinculo = await obtenerCodigoVinculacion({ personaId, creadoPor: req.session.user.personaId || null });
+        return { ...cuenta, ...vinculo };
+    } catch (e) {
+        console.error('No se pudo generar el código de vinculación:', e.message || e);
+        return cuenta;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Alta de paciente + primer registro clínico (rol profesional).
 // ---------------------------------------------------------------------------
@@ -269,9 +289,9 @@ exports.regisPacient = async (req, res) => {
         });
 
         // 4. Cuenta de acceso + email con los datos (no rompe el alta si falla).
-        const cuenta = await crearCuentaPaciente({
+        const cuenta = await conCodigoSiFaltaEmail(req, persona.id, await crearCuentaPaciente({
             personaId: persona.id, email, nombre: fullName, clinicaId: prof.clinicaId,
-        });
+        }));
 
         return res.status(201).json({ message: 'Paciente registrado con éxito', id_paciente: paciente.id, cuenta });
     } catch (err) {
@@ -318,9 +338,9 @@ async function sumarPersonaDeLaClinica(req, res, db, prof, cob, cod, persona) {
         }
         cuenta = { estado: 'vinculada', mailEnviado };
     } else {
-        cuenta = await crearCuentaPaciente({
+        cuenta = await conCodigoSiFaltaEmail(req, persona.id, await crearCuentaPaciente({
             personaId: persona.id, email: req.body.email || persona.email, nombre, clinicaId: prof.clinicaId,
-        });
+        }));
     }
 
     return res.status(201).json({ message: 'Paciente registrado con éxito', id_paciente: paciente.id, cuenta });
@@ -470,6 +490,54 @@ exports.enviarAcceso = async (req, res) => {
     } catch (err) {
         console.error('Error en enviar-acceso:', err);
         return res.status(500).json({ error: 'No se pudo enviar el acceso.' });
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Fase V: código de vinculación de un paciente de la clínica que no tiene cuenta (se
+// cargó sin email). Devuelve el vigente o, con `regenerar`, uno nuevo (el anterior
+// deja de valer). El paciente lo carga en "Mi historia" ya registrado.
+// ---------------------------------------------------------------------------
+exports.codigoVinculacion = async (req, res) => {
+    try {
+        const { dni, regenerar } = req.body;
+        const clinicaId = req.session.user.clinicaId;
+        if (!clinicaId) return res.status(400).json({ error: 'Tu usuario no tiene una clínica asignada.' });
+
+        const db = await getUserSupabase(req);
+        if (!db) return res.status(ERR_SESION.status).json(ERR_SESION.body);
+
+        const { data: persona, error } = await db
+            .from('persona')
+            .select('id, id_auth, nombre, apellido, dni, paciente(id)')
+            .eq('dni', dni)
+            .eq('clinica_id', clinicaId)
+            .maybeSingle();
+        if (error) throw error;
+        if (!persona || !persona.paciente || !persona.paciente[0]) {
+            return res.status(404).json({ error: 'Paciente no encontrado.' });
+        }
+        if (persona.id_auth) {
+            return res.status(409).json({ error: 'El paciente ya tiene cuenta: ve su historia clínica entrando a Medilu.' });
+        }
+
+        const vinculo = await obtenerCodigoVinculacion({
+            personaId: persona.id,
+            creadoPor: req.session.user.personaId || null,
+            regenerar: !!regenerar,
+        });
+
+        await registrarAcceso(req, {
+            accion: 'codigo_vinculacion',
+            idPaciente: persona.paciente[0].id,
+            paciente: { nombre: [persona.nombre, persona.apellido].filter(Boolean).join(' '), dni: persona.dni },
+            detalle: regenerar ? { regenerado: true } : null,
+        });
+
+        return res.json(vinculo);
+    } catch (err) {
+        console.error('Error en codigo-vinculacion:', err);
+        return res.status(500).json({ error: 'No se pudo obtener el código de vinculación.' });
     }
 };
 

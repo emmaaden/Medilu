@@ -206,6 +206,10 @@ module.exports = {
             dni,
             email: emailOpcional,
         }),
+        codigoVinculacion: z.object({
+            dni,
+            regenerar: z.boolean().optional(),
+        }),
     },
 
     miCuenta: {
@@ -219,6 +223,9 @@ module.exports = {
             fechaNacimiento: z.string().max(40).optional(),
             obraSocial: z.string().max(100).optional(),
             ...cobertura,
+        }),
+        vincularHistoria: z.object({
+            codigo: z.string().trim().min(1, 'Ingresá el código').max(20, 'Código demasiado largo'),
         }),
     },
 

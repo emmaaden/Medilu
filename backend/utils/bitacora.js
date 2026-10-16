@@ -37,8 +37,11 @@ async function snapshotPaciente(idPaciente) {
     return { nombre: [p.nombre, p.apellido].filter(Boolean).join(' '), dni: p.dni || null };
 }
 
-// registrarAcceso(req, { accion, idPaciente?, idRegistro?, paciente?: {nombre, dni}, detalle? })
-async function registrarAcceso(req, { accion, idPaciente = null, idRegistro = null, paciente = null, detalle = null }) {
+// registrarAcceso(req, { accion, idPaciente?, idRegistro?, paciente?: {nombre, dni}, detalle?, clinicaId? })
+// `clinicaId` es para cuando la acción es de una clínica distinta de la de la sesión
+// (Fase V: el paciente vincula una ficha de una clínica; se registra en ESA clínica
+// para que la vea en su auditoría). Lo pone el backend, nunca el body.
+async function registrarAcceso(req, { accion, idPaciente = null, idRegistro = null, paciente = null, detalle = null, clinicaId }) {
     try {
         const u = req.session && req.session.user;
         if (!u) return;
@@ -47,7 +50,7 @@ async function registrarAcceso(req, { accion, idPaciente = null, idRegistro = nu
         if (!snap && idPaciente) snap = await snapshotPaciente(idPaciente);
 
         const { error } = await supabase.from('hc_acceso').insert({
-            clinica_id: u.clinicaId || null,
+            clinica_id: (clinicaId !== undefined ? clinicaId : u.clinicaId) || null,
             id_persona_actor: u.personaId || null,
             actor_nombre: await nombreActor(req),
             actor_rol: u.rol || u.role || null,
