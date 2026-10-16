@@ -6,6 +6,7 @@ const planes = require('../utils/planes');
 const { fichasPaciente } = require('../utils/fichasPaciente');
 const { sendMail } = require('../utils/mailer');
 const { vencimientoLocal } = require('../middleware/userSupabase');
+const { invalidarMembresias } = require('../middleware/sesionVigente');
 const { cerrarOtrasSesiones, regenerarSesion } = require('../utils/sesiones');
 const { vencido: codigoVencido, DIAS_VIGENCIA: DIAS_VIGENCIA_CODIGO } = require('../utils/codigoActivacion');
 const { layoutMail, parrafo, fuerte, boton, aviso } = require('../utils/emailLayout');
@@ -647,6 +648,7 @@ exports.unirseClinica = async (req, res) => {
             await supabase.from('codigo_activacion').update({ usado: false, usado_por: null }).eq('id', cod.id);
             throw memErr;
         }
+        invalidarMembresias(personaId);
 
         return res.json({
             message: 'Te sumaste a la clínica',
@@ -692,6 +694,7 @@ exports.crearConsultorio = async (req, res) => {
             .from('membresia')
             .insert([{ id_persona: personaId, clinica_id: clinicaId, rol: 'admin', activo: true }]);
         if (memErr) throw memErr;
+        invalidarMembresias(personaId);
 
         return res.json({
             message: 'Consultorio creado',
@@ -725,6 +728,10 @@ exports.selectClinica = async (req, res) => {
             return res.status(403).json({ error: 'No tenés una membresía activa en esa clínica.' });
         }
 
+        // sesionVigente puede tener cacheadas membresías de antes de sumarse a esta
+        // clínica (p. ej. un alta hecha por un admin en otra instancia): sin esto, el
+        // próximo pedido no la encuentra y cierra la sesión.
+        invalidarMembresias(personaId);
         req.session.user.clinicaId = elegida.clinicaId;
         req.session.user.rol = elegida.rol;
         req.session.user.esAdmin = elegida.esAdmin;
