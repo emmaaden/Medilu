@@ -343,6 +343,7 @@ exports.vincularHistoria = async (req, res) => {
             accion: 'vincular_historia',
             idPaciente: r.idPaciente,
             paciente: r.paciente,
+            clinicaId: r.clinicaId, // la de la ficha: así la clínica lo ve en su auditoría
         });
         return res.json({ clinica: r.clinica });
     } catch (err) {

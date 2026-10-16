@@ -312,7 +312,7 @@ async function obtenerCodigoVinculacion({ personaId, creadoPor = null, regenerar
 // Canjea el código para la cuenta `authId`. Devuelve null ante cualquier problema
 // (no existe, venció, la ficha ya tiene cuenta, el DNI no coincide…): quien llama
 // responde siempre lo mismo para no revelar nada. Si sale bien:
-//   { idPaciente, clinica, paciente: { nombre, dni } }
+//   { idPaciente, clinicaId, clinica, paciente: { nombre, dni } }
 async function canjearCodigoVinculacion({ authId, codigo }) {
     const cod = normalizarCodigo(codigo);
     if (!authId || cod.length !== LARGO_CODIGO) return null;
@@ -361,6 +361,7 @@ async function canjearCodigoVinculacion({ authId, codigo }) {
 
     return {
         idPaciente: ficha.paciente[0].id,
+        clinicaId: ficha.clinica_id || null,
         clinica: await nombreClinica(ficha.clinica_id),
         paciente: { nombre: [ficha.nombre, ficha.apellido].filter(Boolean).join(' '), dni: ficha.dni },
     };
