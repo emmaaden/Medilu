@@ -565,6 +565,87 @@ exports.misClinicas = async (req, res) => {
     }
 };
 
+// Fase U — Un profesional YA registrado se suma a otra clínica con un código de
+// activación (el alta con código solo sirve para cuentas nuevas). Crea la membresía
+// como 'profesional'; la clínica activa no cambia: la elige después en el selector.
+exports.unirseClinica = async (req, res) => {
+    try {
+        const { personaId, idRole, id: authId } = req.session.user;
+        if (!personaId || !idRole) return res.status(403).json({ error: 'Solo un profesional puede sumarse a otra clínica.' });
+        const codigo = String(req.body.codigo).trim();
+
+        const { data: cod, error: codErr } = await supabase
+            .from('codigo_activacion')
+            .select('id, clinica_id, usado, rol, creado_en, clinica:clinica_id ( nombre, activa )')
+            .eq('codigo', codigo)
+            .maybeSingle();
+        if (codErr) throw codErr;
+        if (!cod || cod.usado || cod.clinica?.activa === false) {
+            return res.status(400).json({ error: 'Código de activación inválido o ya utilizado.' });
+        }
+        if (codigoVencido(cod.creado_en)) {
+            return res.status(400).json({ error: `El código de activación venció (dura ${DIAS_VIGENCIA_CODIGO} días). Pedile uno nuevo al administrador.` });
+        }
+        // Compat: los códigos previos a la Fase E no tienen rol -> 'profesional'.
+        if ((cod.rol || 'profesional') !== 'profesional') {
+            return res.status(400).json({ error: 'El código no es para un profesional. Pedile al administrador un código de profesional.' });
+        }
+
+        // Ya es (o fue) parte de la clínica: no se usa el código.
+        const { data: previa, error: prevErr } = await supabase
+            .from('membresia')
+            .select('id, activo')
+            .eq('id_persona', personaId)
+            .eq('clinica_id', cod.clinica_id)
+            .maybeSingle();
+        if (prevErr) throw prevErr;
+        if (previa) {
+            return res.status(409).json({
+                error: previa.activo
+                    ? 'Ya sos parte de esa clínica.'
+                    : 'Ya fuiste parte de esa clínica: pedile al administrador que te vuelva a activar.',
+            });
+        }
+
+        // Fase L: ocupa un lugar de profesional del plan de la clínica.
+        const bloqueo = await planes.verificarAlta(cod.clinica_id, 'profesional');
+        if (bloqueo) {
+            return res.status(bloqueo.status).json({
+                error: `La clínica no puede sumarte: ${bloqueo.error} Pedile al administrador que lo revise.`,
+                code: bloqueo.code,
+            });
+        }
+
+        // El código se toma solo si seguía libre (dos canjes simultáneos no pasan los dos).
+        const { data: tomado, error: tomErr } = await supabase
+            .from('codigo_activacion')
+            .update({ usado: true, usado_por: authId })
+            .eq('id', cod.id)
+            .eq('usado', false)
+            .select('id');
+        if (tomErr) throw tomErr;
+        if (!tomado || tomado.length === 0) {
+            return res.status(400).json({ error: 'Código de activación inválido o ya utilizado.' });
+        }
+
+        const { error: memErr } = await supabase
+            .from('membresia')
+            .insert([{ id_persona: personaId, clinica_id: cod.clinica_id, rol: 'profesional', activo: true }]);
+        if (memErr) {
+            await supabase.from('codigo_activacion').update({ usado: false, usado_por: null }).eq('id', cod.id);
+            throw memErr;
+        }
+
+        return res.json({
+            message: 'Te sumaste a la clínica',
+            clinica: { clinicaId: cod.clinica_id, nombre: cod.clinica?.nombre ?? null, rol: 'profesional' },
+        });
+    } catch (err) {
+        console.error('Error en unirse-clinica:', err);
+        return res.status(500).json({ error: 'No se pudo sumar a la clínica.' });
+    }
+};
+
 // Fase A — Fija la clínica activa de la sesión. Valida que el usuario tenga una
 // membresía ACTIVA en la clínica pedida (no se confía en el cliente).
 exports.selectClinica = async (req, res) => {

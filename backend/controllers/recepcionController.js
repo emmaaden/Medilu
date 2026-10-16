@@ -13,6 +13,7 @@ const { generarTokenGestion } = require('../utils/turnoToken');
 const { sendMail } = require('../utils/mailer');
 const { mailTurno } = require('../utils/mailTurno');
 const { validarHorarioTurno, estaLibre, esSolapeTurno } = require('../utils/disponibilidad');
+const { profesionalIdsDeClinica, profesionalEnClinica } = require('../utils/membresias');
 
 // Campos del turno que se devuelven al panel del staff.
 const SELECT_STAFF = `
@@ -146,21 +147,17 @@ exports.listarHorarios = async (req, res) => {
         const profId = idValido(req.query.profId);
         if (!profId) return res.status(400).json({ error: 'Falta el profesional.' });
 
-        const { data: prof, error: profErr } = await supabase
-            .from('profesional')
-            .select('id, persona:id_persona ( clinica_id )')
-            .eq('id', profId)
-            .maybeSingle();
-        if (profErr) throw profErr;
-        if (!prof) return res.status(404).json({ error: 'Profesional no encontrado.' });
-        if (prof.persona?.clinica_id !== clinicaId) {
+        // Fase U: pertenece si atiende en la clínica activa (membresía), y se muestran
+        // solo sus horarios de esta clínica.
+        if (!(await profesionalEnClinica(supabase, profId, clinicaId))) {
             return res.status(403).json({ error: 'El profesional no pertenece a tu clínica.' });
         }
 
         const { data, error } = await supabase
             .from('horario_profesional')
             .select('id, dia, horario_inicio, horario_fin')
-            .eq('id_profesional', profId);
+            .eq('id_profesional', profId)
+            .eq('clinica_id', clinicaId);
         if (error) throw error;
 
         return res.json({ horarios: data || [] });
@@ -174,14 +171,18 @@ exports.listarProfesionales = async (req, res) => {
     try {
         const clinicaId = req.session.user.clinicaId;
 
+        // Fase U: los profesionales de la clínica salen de la membresía.
+        const ids = await profesionalIdsDeClinica(supabase, clinicaId);
+        if (ids.length === 0) return res.json({ profesionales: [] });
+
         const { data, error } = await supabase
             .from('profesional')
             .select(`
                 id,
-                persona:id_persona!inner ( nombre, apellido, clinica_id ),
+                persona:id_persona ( nombre, apellido ),
                 especialidad_profesional ( especialidad:id_especialidad ( nombre ) )
             `)
-            .eq('persona.clinica_id', clinicaId);
+            .in('id', ids);
         if (error) throw error;
 
         const profesionales = (data || []).map((p) => ({
@@ -232,14 +233,14 @@ exports.crearTurno = async (req, res) => {
         const { data: prof, error: profErr } = await supabase
             .from('profesional')
             .select(`
-                persona:id_persona ( clinica_id, nombre, apellido ),
+                persona:id_persona ( nombre, apellido ),
                 especialidad_profesional ( especialidad:id_especialidad ( nombre ) )
             `)
             .eq('id', profId)
             .maybeSingle();
         if (profErr) throw profErr;
         if (!prof) return res.status(404).json({ error: 'Profesional no encontrado.' });
-        if (prof.persona?.clinica_id !== clinicaId) {
+        if (!(await profesionalEnClinica(supabase, profId, clinicaId))) {
             return res.status(403).json({ error: 'El profesional no pertenece a tu clínica.' });
         }
 
@@ -247,7 +248,7 @@ exports.crearTurno = async (req, res) => {
         const especialidad = prof.especialidad_profesional?.[0]?.especialidad?.nombre || null;
 
         // 2. Horario válido (auditoría 2026-10-15, #3) y libre (turnos reservados + bloqueos).
-        const invalido = await validarHorarioTurno(profId, start.dateTime, end.dateTime);
+        const invalido = await validarHorarioTurno(profId, start.dateTime, end.dateTime, clinicaId);
         if (invalido) return res.status(invalido.status).json({ error: invalido.error });
         if (!(await estaLibre(profId, start.dateTime, end.dateTime))) {
             return res.status(409).json({ error: 'Ese horario no está disponible (ocupado o bloqueado).' });
@@ -381,7 +382,7 @@ exports.reprogramarTurno = async (req, res) => {
         }
 
         // El nuevo horario debe ser un slot válido y estar libre (excluyendo este mismo turno).
-        const invalido = await validarHorarioTurno(turno.id_profesional, start.dateTime, end.dateTime);
+        const invalido = await validarHorarioTurno(turno.id_profesional, start.dateTime, end.dateTime, clinicaId);
         if (invalido) return res.status(invalido.status).json({ error: invalido.error });
         if (!(await estaLibre(turno.id_profesional, start.dateTime, end.dateTime, id))) {
             return res.status(409).json({ error: 'Ese horario no está disponible (ocupado o bloqueado).' });
@@ -545,15 +546,8 @@ exports.crearBloqueo = async (req, res) => {
             return res.status(400).json({ error: 'El fin debe ser posterior al inicio.' });
         }
 
-        // El profesional debe pertenecer a la clínica activa.
-        const { data: prof, error: profErr } = await supabase
-            .from('profesional')
-            .select('persona:id_persona ( clinica_id )')
-            .eq('id', profId)
-            .maybeSingle();
-        if (profErr) throw profErr;
-        if (!prof) return res.status(404).json({ error: 'Profesional no encontrado.' });
-        if (prof.persona?.clinica_id !== clinicaId) {
+        // El profesional debe atender en la clínica activa (Fase U: por membresía).
+        if (!(await profesionalEnClinica(supabase, profId, clinicaId))) {
             return res.status(403).json({ error: 'El profesional no pertenece a tu clínica.' });
         }
 

@@ -23,6 +23,7 @@ import {
   Gauge,
   UserRound,
   KeyRound,
+  CirclePlus,
 } from "lucide-react"
 import { cn } from "cn"
 import { Button } from "@/components/ui/button"
@@ -42,6 +43,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { CambiarContrasenaForm } from "@/components/form/CambiarContrasena"
+import { UnirseClinicaForm } from "@/components/form/UnirseClinica"
 import {
   Sheet,
   SheetContent,
@@ -153,6 +155,7 @@ export function DashboardNavbar() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [cambiarPass, setCambiarPass] = useState(false)
+  const [unirse, setUnirse] = useState(false)
 
   // Fase E: la recepción SOLO ve el panel de turnos. Fase J: el auditor, solo el suyo
   // (aunque el plan ya no lo incluya: la página le explica por qué).
@@ -204,6 +207,8 @@ export function DashboardNavbar() {
     (c) => c.clinicaId === user?.clinicaId
   )
   const puedeCambiarClinica = (user?.clinicas?.length ?? 0) > 1
+  // Fase U: un profesional puede sumarse a otra clínica con un código de activación.
+  const puedeUnirse = user?.role === "profesional" && user?.rol !== "auditor"
   const ROL_LABEL: Record<string, string> = {
     admin: "Administrador/a",
     profesional: "Profesional",
@@ -303,6 +308,11 @@ export function DashboardNavbar() {
                         </Link>
                       </DropdownMenuItem>
                     )}
+                    {puedeUnirse && (
+                      <DropdownMenuItem onSelect={() => setUnirse(true)}>
+                        <CirclePlus /> Sumarme a otra clínica
+                      </DropdownMenuItem>
+                    )}
                   </>
                 )}
                 <DropdownMenuSeparator />
@@ -380,6 +390,18 @@ export function DashboardNavbar() {
                     <UserRound /> Entrar como paciente
                   </Button>
                 )}
+                {puedeUnirse && (
+                  <Button
+                    variant="ghost"
+                    className="mb-2 w-full"
+                    onClick={() => {
+                      setOpen(false)
+                      setUnirse(true)
+                    }}
+                  >
+                    <CirclePlus /> Sumarme a otra clínica
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   className="mb-2 w-full"
@@ -414,6 +436,23 @@ export function DashboardNavbar() {
               Cancelar
             </Button>
           </CambiarContrasenaForm>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={unirse} onOpenChange={setUnirse}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sumarme a otra clínica</DialogTitle>
+            <DialogDescription>
+              Ingresá el código de activación que te dio el administrador de la otra clínica.
+              Vas a seguir en esta y podés cambiar de clínica cuando quieras.
+            </DialogDescription>
+          </DialogHeader>
+          <UnirseClinicaForm>
+            <Button type="button" variant="outline" onClick={() => setUnirse(false)}>
+              Cancelar
+            </Button>
+          </UnirseClinicaForm>
         </DialogContent>
       </Dialog>
     </header>

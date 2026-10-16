@@ -468,13 +468,19 @@ function ReservarForm({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
+  // Los horarios son por clínica: un profesional puede atender en varias.
+  function slotsUrl(d: string) {
+    const q = `date=${encodeURIComponent(d)}&profId=${encodeURIComponent(profId)}`
+    return `/available-slots?${q}${clinica ? `&clinica=${encodeURIComponent(clinica)}` : ""}`
+  }
+
   useEffect(() => {
     if (!date) return
     setLoadingSlots(true)
     setSlot("")
     api
       .get<string[]>(
-        `/available-slots?date=${encodeURIComponent(date)}&profId=${encodeURIComponent(profId)}`
+        slotsUrl(date)
       )
       .then((s) => {
         const arr = Array.isArray(s) ? [...s].sort() : []
@@ -495,7 +501,7 @@ function ReservarForm({
     for (let i = 0; i < 60; i++) {
       try {
         const s = await api.get<string[]>(
-          `/available-slots?date=${encodeURIComponent(d)}&profId=${encodeURIComponent(profId)}`
+          slotsUrl(d)
         )
         if (Array.isArray(s) && s.length) {
           setNearest(`Turno más cercano: ${formatSlotLocal([...s].sort()[0])}hs`)

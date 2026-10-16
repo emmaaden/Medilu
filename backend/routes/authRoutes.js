@@ -17,6 +17,8 @@ router.post('/logout', authController.logout);
 // Fase A — multi-clínica: listar las clínicas del usuario y fijar la activa.
 router.get('/mis-clinicas', requireAuth, authController.misClinicas);
 router.post('/select-clinica', requireAuth, validate(schemas.auth.selectClinica), authController.selectClinica);
+// Fase U — un profesional ya registrado se suma a otra clínica con un código.
+router.post('/unirse-clinica', authLimiter, requireRole('profesional'), validate(schemas.auth.unirseClinica), authController.unirseClinica);
 
 // Fase O — cuenta que es staff y además paciente: elegir (o cambiar) el perfil.
 router.get('/perfiles', requireAuth, authController.misPerfiles);

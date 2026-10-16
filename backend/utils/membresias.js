@@ -70,4 +70,48 @@ async function puedeSumarFicha(db, persona, clinicaId) {
     return !!(data && data.length);
 }
 
-module.exports = { getMembresiasActivas, roleSinProfesional, puedeSumarFicha };
+// Fase U: los profesionales de una clínica salen de la MEMBRESÍA (activa, como admin o
+// profesional), no de persona.clinica_id (que es solo la clínica de origen): un
+// profesional puede atender en varias. `db` es un cliente service_role.
+const ROLES_ATIENDEN = ['admin', 'profesional'];
+
+async function profesionalIdsDeClinica(db, clinicaId) {
+    const { data: mem, error: memErr } = await db
+        .from('membresia')
+        .select('id_persona')
+        .eq('clinica_id', clinicaId)
+        .eq('activo', true)
+        .in('rol', ROLES_ATIENDEN);
+    if (memErr) throw memErr;
+    const personas = [...new Set((mem || []).map((m) => m.id_persona))];
+    if (personas.length === 0) return [];
+    const { data, error } = await db.from('profesional').select('id').in('id_persona', personas);
+    if (error) throw error;
+    return (data || []).map((p) => p.id);
+}
+
+// Clínicas donde atiende un profesional (membresía activa como admin o profesional).
+async function clinicasDeProfesional(db, profId) {
+    const { data: prof, error: profErr } = await db
+        .from('profesional').select('id_persona').eq('id', profId).maybeSingle();
+    if (profErr) throw profErr;
+    if (!prof) return [];
+    const { data, error } = await db
+        .from('membresia')
+        .select('clinica_id')
+        .eq('id_persona', prof.id_persona)
+        .eq('activo', true)
+        .in('rol', ROLES_ATIENDEN);
+    if (error) throw error;
+    return (data || []).map((m) => m.clinica_id);
+}
+
+async function profesionalEnClinica(db, profId, clinicaId) {
+    if (!profId || !clinicaId) return false;
+    return (await clinicasDeProfesional(db, profId)).includes(clinicaId);
+}
+
+module.exports = {
+    getMembresiasActivas, roleSinProfesional, puedeSumarFicha,
+    profesionalIdsDeClinica, clinicasDeProfesional, profesionalEnClinica,
+};

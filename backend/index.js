@@ -32,13 +32,14 @@ const plataformaRoutes = require('./routes/plataformaRoutes'); // Fase L: activa
 const pagoRoutes = require('./routes/pagoRoutes'); // Fase M: suscripción de la clínica con Mercado Pago
 // (los guards de auth se aplican en cada router; el dashboard pasó al SPA)
 const { supabase } = require('./config/supabaseClient');
-const { getMembresiasActivas } = require('./utils/membresias');
+const { getMembresiasActivas, clinicasDeProfesional } = require('./utils/membresias');
 const { fichasPaciente } = require('./utils/fichasPaciente'); // Fase O
 const { generarTokenGestion } = require('./utils/turnoToken');
 const { sendMail, isMailerConfigured } = require('./utils/mailer');
 const { mailTurno } = require('./utils/mailTurno');
 const {
     franjasDeFecha, slotsDisponibles, validarHorarioTurno, estaLibre, esSolapeTurno,
+    horariosDeProfesional,
 } = require('./utils/disponibilidad');
 const { turnosOnlineApagados } = require('./utils/turnosOnline'); // Fase N2
 const { validate } = require('./middleware/validate');
@@ -359,25 +360,43 @@ app.get('/api/user', async (req, res) => {
 // no contra Google Calendar. La lógica de slots/solapamiento vive en ese módulo.
 // ---------------------------------------------------------------------------
 
+// Fase U — Clínica de un turno: un profesional puede atender en varias, y cada una
+// tiene sus horarios. Se toma, en orden: la de la página (?clinica=<slug>), la clínica
+// activa del staff logueado, o la única donde atiende el profesional.
+// Devuelve { clinicaId } o { status, error } para responder tal cual.
+async function clinicaDelTurno(req, profId, slug) {
+    const clinicas = await clinicasDeProfesional(supabase, profId);
+    const s = slug && String(slug).trim();
+    if (s) {
+        const { data: cli, error } = await supabase
+            .from('clinica').select('id').eq('slug', s).eq('activa', true).maybeSingle();
+        if (error) throw error;
+        if (!cli) return { status: 404, error: 'Clínica no encontrada.' };
+        if (!clinicas.includes(cli.id)) return { status: 403, error: 'El profesional no pertenece a esta clínica.' };
+        return { clinicaId: cli.id };
+    }
+    const activa = req.session?.isAuthenticated && req.session.user?.role !== 'paciente'
+        ? req.session.user?.clinicaId : null;
+    if (activa && clinicas.includes(activa)) return { clinicaId: activa };
+    if (clinicas.length === 1) return { clinicaId: clinicas[0] };
+    if (clinicas.length === 0) return { status: 404, error: 'Profesional no encontrado' };
+    return { status: 400, error: 'El profesional atiende en varias clínicas: elegí la clínica primero.' };
+}
+
 // Franjas horarias disponibles de un profesional para una fecha dada.
-// Respeta horario_profesional (por día de la semana) y excluye los eventos ya
-// agendados en su Google Calendar. El calendario se deriva del profesional.
+// Respeta horario_profesional (por día de la semana, de la clínica del turno) y
+// excluye los turnos y bloqueos ya cargados.
 app.get('/available-slots', validate(schemas.calendar.availableSlots, 'query'), async (req, res) => {
-    const { date, profId } = req.query;
+    const { date, profId, clinica } = req.query;
 
     try {
-        // 1. Horarios de atención del profesional (por día de la semana).
-        const { data: prof, error: profError } = await supabase
-            .from('profesional')
-            .select('horario_profesional ( dia, horario_inicio, horario_fin )')
-            .eq('id', profId)
-            .maybeSingle();
-
-        if (profError) throw profError;
-        if (!prof) return res.status(404).json({ error: 'Profesional no encontrado' });
+        // 1. Horarios de atención del profesional en la clínica (por día de la semana).
+        const cli = await clinicaDelTurno(req, profId, clinica);
+        if (cli.error) return res.status(cli.status).json({ error: cli.error });
+        const horarios = await horariosDeProfesional(profId, cli.clinicaId);
 
         // 2. Franjas del día de la semana pedido.
-        const franjas = franjasDeFecha(prof.horario_profesional, date);
+        const franjas = franjasDeFecha(horarios, date);
         if (franjas.length === 0) return res.json([]); // no atiende ese día
 
         // 3. Slots libres = franjas − turnos reservados − bloqueos (Fase F, contra la base).
@@ -416,7 +435,7 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
             .from('profesional')
             .select(`
                 turnos_online,
-                persona:id_persona ( clinica_id, nombre, apellido ),
+                persona:id_persona ( nombre, apellido ),
                 especialidad_profesional ( especialidad:id_especialidad ( nombre ) )
             `)
             .eq('id', profId)
@@ -428,9 +447,11 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
             return res.status(403).json({ error: 'Este profesional no toma turnos online. Comunicate directamente con la clínica.' });
         }
 
-        // clinica_id del turno: se deriva SIEMPRE del profesional (para que aparezca
-        // en el panel de su clínica). El slug, si viene, solo valida pertenencia.
-        const clinicaProf = (prof.persona && prof.persona.clinica_id) || null;
+        // clinica_id del turno (Fase U): la de la página (?clinica=<slug>), validando que
+        // el profesional atienda ahí; sin slug, la única clínica donde atiende.
+        const cli = await clinicaDelTurno(req, profId, clinica);
+        if (cli.error) return res.status(cli.status).json({ error: cli.error });
+        const clinicaProf = cli.clinicaId;
 
         // Fase L: una clínica con la suscripción vencida no recibe turnos online.
         if (clinicaProf && (await planes.getPlanClinica(clinicaProf)).soloLectura) {
@@ -441,32 +462,17 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
             return res.status(403).json({ error: 'Esta clínica no toma turnos online. Comunicate directamente con la clínica.' });
         }
 
-        // 2. Si la reserva es sobre una clínica, el profesional debe ser de esa clínica.
-        if (clinica) {
-            const { data: cli, error: cliError } = await supabase
-                .from('clinica')
-                .select('id')
-                .eq('slug', String(clinica).trim())
-                .eq('activa', true)
-                .maybeSingle();
-            if (cliError) throw cliError;
-            if (!cli) return res.status(404).json({ error: 'Clínica no encontrada.' });
-            if (clinicaProf !== cli.id) {
-                return res.status(403).json({ error: 'El profesional no pertenece a esta clínica.' });
-            }
-        }
-
-        // 3. El horario tiene que ser uno de los slots que ofrece la página: 30', futuro
+        // 2. El horario tiene que ser uno de los slots que ofrece la página: 30', futuro
         //    y dentro de la atención del profesional (auditoría 2026-10-15, #3).
-        const invalido = await validarHorarioTurno(profId, start.dateTime, end.dateTime);
+        const invalido = await validarHorarioTurno(profId, start.dateTime, end.dateTime, clinicaProf);
         if (invalido) return res.status(invalido.status).json({ error: invalido.error });
 
-        // 4. Verificar que el horario siga libre (turnos reservados + bloqueos).
+        // 3. Verificar que el horario siga libre (turnos reservados + bloqueos).
         if (!(await estaLibre(profId, start.dateTime, end.dateTime))) {
             return res.status(409).json({ error: 'Ese horario ya no está disponible. Elegí otro.' });
         }
 
-        // 5. Registrar el turno (fuente de verdad del vínculo con la persona).
+        // 4. Registrar el turno (fuente de verdad del vínculo con la persona).
         //    - Paciente logueado -> se ata a su paciente.id (id_paciente).
         //    - Invitado          -> id_paciente NULL + manage_token para gestionarlo.
         //    Fase O: si el paciente tiene ficha en la clínica del turno, se ata a esa.
@@ -506,7 +512,7 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
         }
         if (insError) throw insError;
 
-        // 6. Email de confirmación (best-effort: no bloquea la reserva).
+        // 5. Email de confirmación (best-effort: no bloquea la reserva).
         // Enlace de gestión: los invitados reciben su token; los logueados van a "Mis turnos".
         sendMail({
             to: email,

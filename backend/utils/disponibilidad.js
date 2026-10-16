@@ -105,7 +105,8 @@ async function slotsDisponibles(profId, dateStr, franjas) {
 // que ofrece /available-slots). Devuelve null si está bien o { status: 400, error }.
 // Lo usan la reserva pública y el staff: ninguno de los dos ofrece hoy horarios
 // fuera de la atención ni en el pasado.
-async function validarHorarioTurno(profId, inicioISO, finISO) {
+// Fase U: los horarios son por clínica; `clinicaId` es la clínica del turno.
+async function validarHorarioTurno(profId, inicioISO, finISO, clinicaId) {
     const inicio = new Date(inicioISO);
     const fin = new Date(finISO);
     if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) {
@@ -118,11 +119,7 @@ async function validarHorarioTurno(profId, inicioISO, finISO) {
         return { status: 400, error: 'Ese horario ya pasó. Elegí uno futuro.' };
     }
 
-    const { data: horarios, error } = await supabase
-        .from('horario_profesional')
-        .select('dia, horario_inicio, horario_fin')
-        .eq('id_profesional', profId);
-    if (error) throw error;
+    const horarios = await horariosDeProfesional(profId, clinicaId);
     const dateStr = fechaAR(inicio);
     const enHorario = iniciosDeSlots(dateStr, franjasDeFecha(horarios, dateStr))
         .some(s => s.getTime() === inicio.getTime());
@@ -130,6 +127,19 @@ async function validarHorarioTurno(profId, inicioISO, finISO) {
         return { status: 400, error: 'Ese horario está fuera de la atención del profesional.' };
     }
     return null;
+}
+
+// Franjas de atención de un profesional en una clínica (Fase U: cada horario es de
+// una clínica; sin clínica no hay a qué horarios atenerse).
+async function horariosDeProfesional(profId, clinicaId) {
+    if (!clinicaId) return [];
+    const { data, error } = await supabase
+        .from('horario_profesional')
+        .select('dia, horario_inicio, horario_fin')
+        .eq('id_profesional', profId)
+        .eq('clinica_id', clinicaId);
+    if (error) throw error;
+    return data || [];
 }
 
 // ¿El error de Postgres es la restricción de exclusión de turnos (Fase Q)?
@@ -168,5 +178,5 @@ async function estaLibre(profId, inicioISO, finISO, excluirTurnoId = null) {
 
 module.exports = {
     SLOT_MINUTOS, normalizarDia, franjasDeFecha, slotsDisponibles, validarHorarioTurno,
-    estaLibre, esSolapeTurno, intervalosOcupadosDia,
+    estaLibre, esSolapeTurno, intervalosOcupadosDia, horariosDeProfesional,
 };

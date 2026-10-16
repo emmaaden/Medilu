@@ -92,6 +92,9 @@ module.exports = {
         selectClinica: z.object({
             clinicaId: z.uuid('Clínica inválida'),
         }),
+        unirseClinica: z.object({
+            codigo: z.string().trim().min(1, 'Ingresá el código de activación').max(40),
+        }),
         selectPerfil: z.object({
             perfil: z.enum(['staff', 'paciente'], 'Perfil inválido'),
         }),
@@ -245,6 +248,7 @@ module.exports = {
                 .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (formato YYYY-MM-DD)')
                 .refine(v => !Number.isNaN(new Date(v).getTime()), 'Fecha inexistente'),
             profId: idFlexible,
+            clinica: z.string().trim().max(60).optional(), // Fase U: slug de la clínica del turno
         }),
         createEvent: z.object({
             summary: z.string().min(1, 'Resumen requerido'),
