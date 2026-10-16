@@ -49,6 +49,8 @@ export const ACCION_LABEL: Record<string, string> = {
   resolver_autorizacion: "Resolvió una autorización previa",
   ver_adjunto_autorizacion: "Abrió un adjunto de autorización",
   editar_cobertura: "Actualizó la cobertura del paciente",
+  codigo_vinculacion: "Pidió el código de vinculación",
+  vincular_historia: "El paciente vinculó su historia a su cuenta",
 }
 
 export type Revision = {

@@ -19,6 +19,8 @@ const { serializarDiente } = require('../utils/odontograma');
 const { columnasCobertura } = require('../utils/cobertura');
 const { serializarCodificacion, SELECT_CODIFICACION } = require('../utils/codificacion');
 const { fichasPaciente } = require('../utils/fichasPaciente');
+const { canjearCodigoVinculacion } = require('../utils/cuentaPaciente');
+const { registrarAcceso } = require('../utils/bitacora');
 
 // Campos de persona que el paciente puede editar (NO dni / id_auth / clinica_id).
 const CAMPOS_PERSONA = ['nombre', 'apellido', 'telefono', 'direccion', 'sexo'];
@@ -290,6 +292,7 @@ const ACCIONES_PACIENTE = [
     'ver_registro_auditoria', 'revisar', 'responder',
     'solicitar_autorizacion', 'ver_autorizacion', 'resolver_autorizacion',
     'ver_adjunto_autorizacion', 'editar_cobertura',
+    'codigo_vinculacion', 'vincular_historia',
 ];
 
 exports.misAccesos = async (req, res) => {
@@ -320,5 +323,30 @@ exports.misAccesos = async (req, res) => {
     } catch (err) {
         console.error('Error en mi-cuenta/accesos:', err);
         return res.status(500).json({ error: 'Error al obtener los accesos a tu historia clínica.' });
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Fase V: POST /api/mi-cuenta/vincular-historia -> suma a la cuenta la ficha de un
+// consultorio que la cargó sin email, con el código que le dio el profesional.
+// Cualquier problema responde lo mismo (no revela si el código existe ni de quién es).
+// ---------------------------------------------------------------------------
+exports.vincularHistoria = async (req, res) => {
+    try {
+        const r = await canjearCodigoVinculacion({ authId: req.session.user.id, codigo: req.body.codigo });
+        if (!r) {
+            return res.status(400).json({
+                error: 'El código no es válido o venció. Revisalo o pedile uno nuevo a tu profesional.',
+            });
+        }
+        await registrarAcceso(req, {
+            accion: 'vincular_historia',
+            idPaciente: r.idPaciente,
+            paciente: r.paciente,
+        });
+        return res.json({ clinica: r.clinica });
+    } catch (err) {
+        console.error('Error en mi-cuenta/vincular-historia:', err);
+        return res.status(500).json({ error: 'No se pudo vincular la historia clínica.' });
     }
 };

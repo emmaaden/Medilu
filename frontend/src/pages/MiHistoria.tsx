@@ -1,12 +1,22 @@
 import { useEffect, useState } from "react"
 import { Link, Navigate } from "react-router-dom"
 import { toast } from "sonner"
-import { Loader2, Download, FileText, User, ArrowLeft, FileJson, Eye, Tags, Building2 } from "lucide-react"
+import { Loader2, Download, FileText, User, ArrowLeft, FileJson, Eye, Tags, Building2, KeyRound, Link2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Field } from "@/components/form/Field"
 import { Container, PageHero } from "@/components/site/Section"
-import { api } from "@/lib/api"
+import { api, ApiError } from "@/lib/api"
 import { useUser } from "@/hooks/useUser"
 import { downloadPatientHistoryPdf, type Paciente } from "@/lib/patientPdf"
 import { Odontogram } from "@/components/dashboard/Odontogram"
@@ -74,6 +84,89 @@ function AccesosHistoria() {
   )
 }
 
+/**
+ * Fase V: el paciente suma la historia que le cargaron en un consultorio sin su email,
+ * con el código que le dio el profesional. Se muestra siempre (no depende del DNI).
+ */
+function VincularHistoria({ onVinculada }: { onVinculada: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [codigo, setCodigo] = useState("")
+  const [enviando, setEnviando] = useState(false)
+
+  async function vincular(e: React.FormEvent) {
+    e.preventDefault()
+    if (!codigo.trim()) {
+      toast.warning("Ingresá el código que te dio tu profesional.")
+      return
+    }
+    setEnviando(true)
+    try {
+      const r = await api.post<{ clinica?: string }>("/api/mi-cuenta/vincular-historia", { codigo: codigo.trim() })
+      toast.success(r.clinica ? `Sumamos tu historia de ${r.clinica}.` : "Sumamos tu historia clínica.")
+      setOpen(false)
+      setCodigo("")
+      onVinculada()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "No se pudo vincular la historia clínica.")
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <>
+      <Card className="mt-8">
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div>
+            <p className="font-medium">¿Te atendiste en un consultorio que usa Medilu?</p>
+            <p className="text-sm text-muted-foreground">
+              Si no ves esa historia acá, pedile a tu profesional tu código de vinculación.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setOpen(true)}>
+            <Link2 /> Vincular historia
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Vincular historia clínica</DialogTitle>
+            <DialogDescription>
+              Ingresá el código que te dio tu profesional. Tiene que ser de una historia cargada con tu
+              mismo DNI.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={vincular} className="space-y-4">
+            <Field label="Código de vinculación" htmlFor="codigo-vinculacion" required>
+              <Input
+                id="codigo-vinculacion"
+                autoComplete="off"
+                autoCapitalize="characters"
+                spellCheck={false}
+                placeholder="ABCD-1234"
+                className="h-10 font-mono uppercase tracking-wider"
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value)}
+              />
+            </Field>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={enviando}>
+                {enviando ? <Loader2 className="animate-spin" /> : <KeyRound />}
+                Vincular
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 export default function MiHistoria() {
   const { user, loading: loadingUser } = useUser()
   const [paciente, setPaciente] = useState<Paciente | null>(null)
@@ -81,13 +174,18 @@ export default function MiHistoria() {
 
   const esPaciente = user?.role === "paciente"
 
-  useEffect(() => {
-    if (!esPaciente) return
+  function cargarHistoria() {
     api
       .get<Paciente>("/api/mi-cuenta/historia")
       .then((d) => setPaciente(d))
       .catch(() => toast.error("No se pudo cargar tu historia clínica."))
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    if (!esPaciente) return
+    cargarHistoria()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [esPaciente])
 
   async function descargarJson() {
@@ -298,6 +396,8 @@ export default function MiHistoria() {
                   No hay consultas registradas.
                 </p>
               )}
+
+              <VincularHistoria onVinculada={cargarHistoria} />
 
               <AccesosHistoria />
             </>

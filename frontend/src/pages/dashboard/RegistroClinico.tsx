@@ -20,12 +20,17 @@ import {
   MailCheck,
   TriangleAlert,
   UserCheck,
+  KeyRound,
+  Copy,
+  Check,
+  RefreshCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Field } from "@/components/form/Field"
 import { DictationTextarea } from "@/components/form/DictationTextarea"
 import { SelectField } from "@/components/form/SelectField"
@@ -176,6 +181,54 @@ type CuentaPaciente = {
   estado: "creada" | "vinculada" | "email_en_uso" | "sin_email" | "error"
   mailEnviado?: boolean
   claveTemporal?: string
+  /** Sin email: código para que el paciente vincule su historia cuando se registre. */
+  codigo?: string
+  venceEn?: string
+}
+
+type Vinculo = { codigo: string; venceEn: string }
+
+/** "ABCD2345" -> "ABCD-2345" (más fácil de dictar). */
+function formatoCodigo(codigo: string) {
+  return codigo.length === 8 ? `${codigo.slice(0, 4)}-${codigo.slice(4)}` : codigo
+}
+
+/** Código de vinculación con su vencimiento y las instrucciones para el paciente. */
+function CodigoVinculacion({ vinculo }: { vinculo: Vinculo }) {
+  const [copiado, setCopiado] = useState(false)
+  const codigo = formatoCodigo(vinculo.codigo)
+  const vence = new Date(vinculo.venceEn).toLocaleDateString("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+  })
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(codigo)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 1500)
+    } catch {
+      toast.error("No se pudo copiar.")
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-border bg-muted/40 p-4 text-center">
+        <p className="text-xs text-muted-foreground">Código de vinculación</p>
+        <p className="mt-1 font-mono text-2xl font-semibold tracking-wider">{codigo}</p>
+        <p className="mt-1 text-xs text-muted-foreground">Vale hasta el {vence} y se usa una sola vez.</p>
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={copiar}>
+          {copiado ? <Check /> : <Copy />}
+          {copiado ? "Copiado" : "Copiar código"}
+        </Button>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Dáselo al paciente: se registra en Medilu con su DNI, entra a{" "}
+        <strong className="text-foreground">Mi historia → Vincular historia</strong> y carga este
+        código. Lo podés volver a ver desde su ficha, en “Enviar acceso”.
+      </p>
+    </div>
+  )
 }
 
 function errorCode(err: unknown) {
@@ -230,6 +283,23 @@ function AccesoResultado({ cuenta, email }: { cuenta: CuentaPaciente; email: str
           <p>
             Lo sumamos a tu clínica: va a ver esta consulta en su cuenta, con su email y contraseña
             de siempre.
+          </p>
+        </AlertDescription>
+      </Alert>
+    )
+  }
+  if (cuenta.estado === "sin_email") {
+    if (cuenta.codigo && cuenta.venceEn) {
+      return <CodigoVinculacion vinculo={{ codigo: cuenta.codigo, venceEn: cuenta.venceEn }} />
+    }
+    return (
+      <Alert>
+        <KeyRound aria-hidden />
+        <AlertTitle>Se registró sin email</AlertTitle>
+        <AlertDescription>
+          <p>
+            Para que vea su historia en Medilu, pedí su código de vinculación desde su ficha con
+            “Enviar acceso”.
           </p>
         </AlertDescription>
       </Alert>
@@ -325,7 +395,7 @@ function RegistrarPaciente({
       void guardarConsultaExistente()
       return
     }
-    const req = ["nombre", "dni", "telefono", "email", "sexo", "direccion", "fechaNacimiento"] as const
+    const req = ["nombre", "dni", "telefono", "sexo", "direccion", "fechaNacimiento"] as const
     if (req.some((k) => !form[k]) || !cobertura.idObraSocial) {
       toast.warning("Completá los datos personales obligatorios.")
       return
@@ -335,7 +405,9 @@ function RegistrarPaciente({
       return
     }
     // El email es por donde le llegan sus datos de acceso: se confirma antes de guardar.
-    setConfirmarEmail(true)
+    // Sin email se registra directo y se le da un código de vinculación.
+    if (form.email.trim()) setConfirmarEmail(true)
+    else void registrar()
   }
 
   async function registrar() {
@@ -487,8 +559,7 @@ function RegistrarPaciente({
                 <Field
                   label="Email del paciente"
                   htmlFor="email"
-                  required
-                  hint="Tiene que ser el email del paciente y estar bien escrito: ahí le enviamos sus datos para entrar a Medilu."
+                  hint="Si lo cargás, tiene que ser el suyo y estar bien escrito: ahí le enviamos sus datos para entrar a Medilu. Si no lo sabés, dejalo vacío y te damos un código para que vincule su historia cuando se registre."
                 >
                   <Input
                     id="email"
@@ -672,10 +743,11 @@ function EnviarAccesoContenido({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Enviar acceso a Medilu</DialogTitle>
+        <DialogTitle>Acceso a Medilu</DialogTitle>
         <DialogDescription>
-          {paciente.fullName} todavía no tiene cuenta. Le creamos una y le enviamos sus datos de
-          acceso por email para que vea su historia clínica.
+          {paciente.fullName} todavía no tiene cuenta. Si tenés su email, le creamos una y le
+          enviamos los datos para entrar. Si no, dale un código para que vincule su historia cuando
+          se registre.
         </DialogDescription>
       </DialogHeader>
       {resultado ? (
@@ -686,34 +758,110 @@ function EnviarAccesoContenido({
           </DialogFooter>
         </>
       ) : (
-        <form onSubmit={enviar} className="space-y-4">
-          <Field
-            label="Email del paciente"
-            htmlFor="acceso-email"
-            required
-            hint="Revisá que sea el suyo y esté bien escrito: ahí le llegan los datos para entrar."
-          >
-            <Input
-              id="acceso-email"
-              type="email"
-              autoComplete="off"
-              className="h-10"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </Field>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={enviando}>
-              {enviando ? <Loader2 className="animate-spin" /> : <Mail />}
-              Enviar acceso
-            </Button>
-          </DialogFooter>
-        </form>
+        <Tabs defaultValue={paciente.email ? "email" : "codigo"}>
+          <TabsList className="w-full">
+            <TabsTrigger value="email">
+              <Mail /> Por email
+            </TabsTrigger>
+            <TabsTrigger value="codigo">
+              <KeyRound /> Con código
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="email">
+            <form onSubmit={enviar} className="space-y-4 pt-2">
+              <Field
+                label="Email del paciente"
+                htmlFor="acceso-email"
+                required
+                hint="Revisá que sea el suyo y esté bien escrito: ahí le llegan los datos para entrar."
+              >
+                <Input
+                  id="acceso-email"
+                  type="email"
+                  autoComplete="off"
+                  className="h-10"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </Field>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={onClose}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={enviando}>
+                  {enviando ? <Loader2 className="animate-spin" /> : <Mail />}
+                  Enviar acceso
+                </Button>
+              </DialogFooter>
+            </form>
+          </TabsContent>
+          <TabsContent value="codigo">
+            <div className="space-y-4 pt-2">
+              <CodigoVinculacionFicha dni={paciente.dni} />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={onClose}>
+                  Cerrar
+                </Button>
+              </DialogFooter>
+            </div>
+          </TabsContent>
+        </Tabs>
       )}
     </>
+  )
+}
+
+/** Código de vinculación de un paciente sin cuenta: el vigente, o uno nuevo. */
+function CodigoVinculacionFicha({ dni }: { dni: string }) {
+  const [vinculo, setVinculo] = useState<Vinculo | null>(null)
+  const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState("")
+
+  async function pedir(regenerar: boolean) {
+    setCargando(true)
+    setError("")
+    try {
+      setVinculo(await api.post<Vinculo>("/pacient/codigo-vinculacion", { dni, regenerar }))
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "No se pudo obtener el código."
+      setError(msg)
+      if (regenerar) toast.error(msg)
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  useEffect(() => {
+    void pedir(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dni])
+
+  if (cargando && !vinculo) {
+    return (
+      <div className="flex justify-center py-6">
+        <Loader2 className="size-5 animate-spin text-primary" />
+      </div>
+    )
+  }
+  if (!vinculo) {
+    return (
+      <Alert>
+        <TriangleAlert aria-hidden />
+        <AlertTitle>No pudimos obtener el código</AlertTitle>
+        <AlertDescription>
+          <p>{error}</p>
+        </AlertDescription>
+      </Alert>
+    )
+  }
+  return (
+    <div className="space-y-3">
+      <CodigoVinculacion vinculo={vinculo} />
+      <Button type="button" variant="ghost" size="sm" disabled={cargando} onClick={() => void pedir(true)}>
+        {cargando ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+        Generar uno nuevo (el anterior deja de valer)
+      </Button>
+    </div>
   )
 }
 

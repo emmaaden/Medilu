@@ -249,4 +249,128 @@ async function buscarAutoregistrado(dni, email) {
     return { coincide: false };
 }
 
-module.exports = { crearCuentaPaciente, buscarAutoregistrado, avisarVinculacion, nombreClinica };
+// ---------------------------------------------------------------------------
+// Fase V: código de vinculación. Para el paciente que se cargó sin email: el
+// profesional le da el código y el paciente, ya registrado y con sesión, lo carga en
+// "Mi historia" para atar la ficha a su cuenta. No alcanza con el DNI (cualquiera
+// puede registrarse con un DNI ajeno): hace falta el código Y que la cuenta tenga
+// una ficha con el mismo DNI. Un código vigente por ficha, de un solo uso.
+// ---------------------------------------------------------------------------
+
+// Solo mayúsculas y sin ambiguos: se dicta por teléfono o se copia de un papel.
+const ALFABETO_CODIGO = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const LARGO_CODIGO = 8;
+const DIAS_VIGENCIA_VINCULO = 30;
+
+function generarCodigo() {
+    let out = '';
+    for (let i = 0; i < LARGO_CODIGO; i++) out += ALFABETO_CODIGO[crypto.randomInt(ALFABETO_CODIGO.length)];
+    return out;
+}
+
+// Acepta el código con guion, espacios o en minúsculas.
+function normalizarCodigo(codigo) {
+    return String(codigo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function normalizarDni(dni) {
+    return String(dni || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+// Devuelve el código vigente de la ficha o crea uno (con `regenerar`, siempre uno
+// nuevo: el anterior deja de valer). { codigo, venceEn }
+async function obtenerCodigoVinculacion({ personaId, creadoPor = null, regenerar = false }) {
+    if (!regenerar) {
+        const { data, error } = await supabase
+            .from('codigo_vinculacion')
+            .select('codigo, vence_en')
+            .eq('id_persona', personaId)
+            .maybeSingle();
+        if (error) throw error;
+        if (data && new Date(data.vence_en) > new Date()) return { codigo: data.codigo, venceEn: data.vence_en };
+    }
+
+    const venceEn = new Date(Date.now() + DIAS_VIGENCIA_VINCULO * 24 * 60 * 60 * 1000).toISOString();
+    // Reintenta si el código choca con el de otra ficha (UNIQUE).
+    for (let i = 0; i < 5; i++) {
+        const codigo = generarCodigo();
+        const { error } = await supabase
+            .from('codigo_vinculacion')
+            .upsert({
+                id_persona: personaId,
+                codigo,
+                creado_por: creadoPor,
+                creado_en: new Date().toISOString(),
+                vence_en: venceEn,
+            }, { onConflict: 'id_persona' });
+        if (!error) return { codigo, venceEn };
+        if (error.code !== '23505') throw error;
+    }
+    throw new Error('No se pudo generar un código de vinculación único.');
+}
+
+// Canjea el código para la cuenta `authId`. Devuelve null ante cualquier problema
+// (no existe, venció, la ficha ya tiene cuenta, el DNI no coincide…): quien llama
+// responde siempre lo mismo para no revelar nada. Si sale bien:
+//   { idPaciente, clinica, paciente: { nombre, dni } }
+async function canjearCodigoVinculacion({ authId, codigo }) {
+    const cod = normalizarCodigo(codigo);
+    if (!authId || cod.length !== LARGO_CODIGO) return null;
+
+    const { data: vin, error } = await supabase
+        .from('codigo_vinculacion')
+        .select('id_persona, vence_en')
+        .eq('codigo', cod)
+        .maybeSingle();
+    if (error) throw error;
+    if (!vin || new Date(vin.vence_en) <= new Date()) return null;
+
+    const { data: ficha, error: fErr } = await supabase
+        .from('persona')
+        .select('id, dni, id_auth, clinica_id, nombre, apellido, paciente(id)')
+        .eq('id', vin.id_persona)
+        .maybeSingle();
+    if (fErr) throw fErr;
+    if (!ficha || ficha.id_auth || !ficha.dni || !(ficha.paciente && ficha.paciente[0])) return null;
+
+    // La cuenta tiene que ser de la misma persona: alguna de sus fichas con ese DNI.
+    const { data: mias, error: mErr } = await supabase
+        .from('persona')
+        .select('dni')
+        .eq('id_auth', authId);
+    if (mErr) throw mErr;
+    const dni = normalizarDni(ficha.dni);
+    if (!(mias || []).some((p) => normalizarDni(p.dni) === dni)) return null;
+
+    // Solo si la ficha sigue sin cuenta. Si la cuenta ya tiene otra ficha en esa
+    // clínica (índice único id_auth+clinica_id), no se vincula.
+    const { data: upd, error: updErr } = await supabase
+        .from('persona')
+        .update({ id_auth: authId })
+        .eq('id', ficha.id)
+        .is('id_auth', null)
+        .select('id');
+    if (updErr) {
+        if (updErr.code === '23505') return null;
+        throw updErr;
+    }
+    if (!upd || upd.length === 0) return null;
+
+    const { error: delErr } = await supabase.from('codigo_vinculacion').delete().eq('id_persona', ficha.id);
+    if (delErr) console.error('Vinculación: no se pudo borrar el código usado:', delErr.message);
+
+    return {
+        idPaciente: ficha.paciente[0].id,
+        clinica: await nombreClinica(ficha.clinica_id),
+        paciente: { nombre: [ficha.nombre, ficha.apellido].filter(Boolean).join(' '), dni: ficha.dni },
+    };
+}
+
+module.exports = {
+    crearCuentaPaciente,
+    buscarAutoregistrado,
+    avisarVinculacion,
+    nombreClinica,
+    obtenerCodigoVinculacion,
+    canjearCodigoVinculacion,
+};
