@@ -11,6 +11,7 @@
 const { supabase } = require('../config/supabaseClient');
 const { listarObrasSociales } = require('../utils/cobertura');
 const PRACTICAS_BASE = require('../utils/practicasBase');
+const { errorDb } = require('../utils/errores');
 
 // ---------------------------------------------------------------------------
 // Obras sociales
@@ -62,7 +63,7 @@ exports.crearObraSocial = async (req, res) => {
             .insert({ clinica_id: clinicaId, nombre, sigla })
             .select('id, nombre, sigla, activo')
             .single();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         return res.status(201).json({ obraSocial: { ...data, propia: true } });
     } catch (err) {
         console.error('Error creando obra social:', err);
@@ -93,7 +94,7 @@ exports.actualizarObraSocial = async (req, res) => {
             .maybeSingle();
         if (error) {
             if (error.code === '23505') return res.status(409).json({ error: 'Ya existe una obra social con ese nombre.' });
-            return res.status(400).json({ error: error.message });
+            return errorDb(res, error);
         }
         if (!data) return res.status(404).json({ error: 'Solo se pueden editar las obras sociales propias de la clínica.' });
 
@@ -119,7 +120,7 @@ exports.cie10 = async (req, res) => {
             .from('cie10')
             .select('codigo, descripcion, categoria')
             .order('codigo', { ascending: true });
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         return res.json({ cie10: data || [] });
     } catch (err) {
         console.error('Error listando CIE-10:', err);
@@ -152,7 +153,7 @@ exports.practicas = async (req, res) => {
             .order('codigo', { ascending: true });
         if (!(esAdmin && req.query.todas === '1')) q = q.eq('activo', true);
         const { data, error } = await q;
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         return res.json({ practicas: (data || []).map(mapPractica) });
     } catch (err) {
         console.error('Error listando prácticas:', err);
@@ -246,7 +247,7 @@ exports.actualizarPractica = async (req, res) => {
             .eq('clinica_id', clinicaId)
             .select('id, codigo, descripcion, requiere_autorizacion, activo')
             .maybeSingle();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         if (!data) return res.status(404).json({ error: 'Práctica no encontrada.' });
         return res.json({ practica: mapPractica(data) });
     } catch (err) {

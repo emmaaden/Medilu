@@ -450,6 +450,12 @@ function SaveRow({
 
 /* --------------------------- Horarios --------------------------- */
 function HorariosEditor({ idRole }: { idRole: number }) {
+  // Fase U: cada clínica tiene sus horarios; se editan los de la clínica activa.
+  const { user } = useAuth()
+  const clinicaActiva =
+    (user?.clinicas?.length ?? 0) > 1
+      ? user?.clinicas?.find((c) => c.clinicaId === user?.clinicaId)
+      : undefined
   const [horarios, setHorarios] = useState<Horario[]>([])
   const [loading, setLoading] = useState(true)
   const [editId, setEditId] = useState<string | number | null>(null)
@@ -543,9 +549,16 @@ function HorariosEditor({ idRole }: { idRole: number }) {
       <Card>
         <CardContent className="p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="flex items-center gap-2 font-semibold">
-              <Clock className="size-5 text-primary" /> Horarios de atención
-            </h3>
+            <div>
+              <h3 className="flex items-center gap-2 font-semibold">
+                <Clock className="size-5 text-primary" /> Horarios de atención
+              </h3>
+              {clinicaActiva && (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  En {clinicaActiva.nombre ?? "esta clínica"}. Cada clínica tiene sus propios horarios.
+                </p>
+              )}
+            </div>
             <Button size="sm" onClick={nuevo}>
               <Plus /> Agregar
             </Button>

@@ -9,6 +9,7 @@ const { vencimientoLocal } = require('../middleware/userSupabase');
 const { cerrarOtrasSesiones, regenerarSesion } = require('../utils/sesiones');
 const { vencido: codigoVencido, DIAS_VIGENCIA: DIAS_VIGENCIA_CODIGO } = require('../utils/codigoActivacion');
 const { layoutMail, parrafo, fuerte, boton, aviso } = require('../utils/emailLayout');
+const { errorDb, registrarError } = require('../utils/errores');
 require('dotenv').config();
 
 // service_role: SALTEA la RLS. Se usa SOLO para operaciones sobre tablas.
@@ -27,6 +28,28 @@ const supabaseAuth = createClient(process.env.SUPABASE_URL, process.env.SUPABASE
 // defecto es http://localhost:3000. Tiene que estar en las Redirect URLs del proyecto.
 function urlBase(req) {
     return (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+}
+
+// Inserta una clínica nueva con un slug único (para su URL pública de turnos) y
+// devuelve su id. Si el slug ya existe, reintenta con un sufijo aleatorio.
+async function insertarClinica(nombre) {
+    const nombreLimpio = String(nombre).trim();
+    const base = slugify(nombreLimpio);
+    let slug = base;
+    let cli = null, cliErr = null;
+    for (let intento = 0; intento < 5; intento++) {
+        ({ data: cli, error: cliErr } = await supabase
+            .from("clinica")
+            .insert([{ nombre: nombreLimpio, slug }])
+            .select("id")
+            .single());
+        if (!cliErr) break;
+        if (cliErr.code !== '23505') throw cliErr; // 23505 = unique_violation
+        slug = `${base}-${Math.random().toString(36).slice(2, 6)}`;
+        cli = null;
+    }
+    if (!cli) throw cliErr || new Error('No se pudo crear la clínica');
+    return cli.id;
 }
 
 exports.register = async (req, res) => {
@@ -136,7 +159,7 @@ exports.register = async (req, res) => {
             password,
             options: { data: { consentimiento }, emailRedirectTo: `${urlBase(req)}/login` },
         });
-        if (error) { return res.status(400).json({ error: error.message }); }
+        if (error) { return errorDb(res, error); }
 
         const user = data.user;
         if (!user) {
@@ -187,26 +210,9 @@ exports.register = async (req, res) => {
 
         // Crear la clínica nueva (vía b) una vez confirmado el usuario.
         if (role === "PROFESIONAL" && !clinicaId && tieneNombreClinica) {
-            const nombreLimpio = String(nombreClinica).trim();
-            const base = slugify(nombreLimpio);
-            let slug = base;
-            let cli = null, cliErr = null;
-            // Reintentar con sufijo aleatorio si el slug ya existe (unique).
-            for (let intento = 0; intento < 5; intento++) {
-                ({ data: cli, error: cliErr } = await supabase
-                    .from("clinica")
-                    .insert([{ nombre: nombreLimpio, slug }])
-                    .select("id")
-                    .single());
-                if (!cliErr) break;
-                if (cliErr.code !== '23505') throw cliErr; // 23505 = unique_violation
-                slug = `${base}-${Math.random().toString(36).slice(2, 6)}`;
-                cli = null;
-            }
-            if (!cli) throw cliErr || new Error('No se pudo crear la clínica');
-            clinicaId = cli.id;
+            clinicaId = await insertarClinica(nombreClinica);
             esAdmin = true;
-            const clinicaNueva = cli.id;
+            const clinicaNueva = clinicaId;
             deshacer.push(() => supabase.from("clinica").delete().eq("id", clinicaNueva));
             // Fase L: toda clínica nueva arranca con la prueba del plan completo.
             deshacer.push(() => supabase.from("suscripcion").delete().eq("clinica_id", clinicaNueva));
@@ -542,7 +548,8 @@ exports.reenviarConfirmacion = async (req, res) => {
 exports.logout = (req, res) => {
     req.session.destroy(err => {
         if (err) {
-            return res.status(500).json({ error: 'Error al cerrar sesión', err });
+            registrarError(err, 'logout');
+            return res.status(500).json({ error: 'Error al cerrar sesión' });
         }
         res.status(200).json({ message: 'Sesión cerrada exitosamente' });
     });
@@ -562,6 +569,135 @@ exports.misClinicas = async (req, res) => {
     } catch (err) {
         console.error('Error en mis-clinicas:', err);
         return res.status(500).json({ error: 'Error al obtener las clínicas' });
+    }
+};
+
+// Fase U — Un profesional YA registrado se suma a otra clínica con un código de
+// activación (el alta con código solo sirve para cuentas nuevas). Crea la membresía
+// como 'profesional'; la clínica activa no cambia: la elige después en el selector.
+exports.unirseClinica = async (req, res) => {
+    try {
+        const { personaId, idRole, id: authId } = req.session.user;
+        if (!personaId || !idRole) return res.status(403).json({ error: 'Solo un profesional puede sumarse a otra clínica.' });
+        const codigo = String(req.body.codigo).trim();
+
+        const { data: cod, error: codErr } = await supabase
+            .from('codigo_activacion')
+            .select('id, clinica_id, usado, rol, creado_en, clinica:clinica_id ( nombre, activa )')
+            .eq('codigo', codigo)
+            .maybeSingle();
+        if (codErr) throw codErr;
+        if (!cod || cod.usado || cod.clinica?.activa === false) {
+            return res.status(400).json({ error: 'Código de activación inválido o ya utilizado.' });
+        }
+        if (codigoVencido(cod.creado_en)) {
+            return res.status(400).json({ error: `El código de activación venció (dura ${DIAS_VIGENCIA_CODIGO} días). Pedile uno nuevo al administrador.` });
+        }
+        // Compat: los códigos previos a la Fase E no tienen rol -> 'profesional'.
+        if ((cod.rol || 'profesional') !== 'profesional') {
+            return res.status(400).json({ error: 'El código no es para un profesional. Pedile al administrador un código de profesional.' });
+        }
+
+        // Ya es (o fue) parte de la clínica: no se usa el código.
+        const { data: previa, error: prevErr } = await supabase
+            .from('membresia')
+            .select('id, activo')
+            .eq('id_persona', personaId)
+            .eq('clinica_id', cod.clinica_id)
+            .maybeSingle();
+        if (prevErr) throw prevErr;
+        if (previa) {
+            return res.status(409).json({
+                error: previa.activo
+                    ? 'Ya sos parte de esa clínica.'
+                    : 'Ya fuiste parte de esa clínica: pedile al administrador que te vuelva a activar.',
+            });
+        }
+
+        // Fase L: ocupa un lugar de profesional del plan de la clínica.
+        const bloqueo = await planes.verificarAlta(cod.clinica_id, 'profesional');
+        if (bloqueo) {
+            return res.status(bloqueo.status).json({
+                error: `La clínica no puede sumarte: ${bloqueo.error} Pedile al administrador que lo revise.`,
+                code: bloqueo.code,
+            });
+        }
+
+        // El código se toma solo si seguía libre (dos canjes simultáneos no pasan los dos).
+        const { data: tomado, error: tomErr } = await supabase
+            .from('codigo_activacion')
+            .update({ usado: true, usado_por: authId })
+            .eq('id', cod.id)
+            .eq('usado', false)
+            .select('id');
+        if (tomErr) throw tomErr;
+        if (!tomado || tomado.length === 0) {
+            return res.status(400).json({ error: 'Código de activación inválido o ya utilizado.' });
+        }
+
+        const { error: memErr } = await supabase
+            .from('membresia')
+            .insert([{ id_persona: personaId, clinica_id: cod.clinica_id, rol: 'profesional', activo: true }]);
+        if (memErr) {
+            await supabase.from('codigo_activacion').update({ usado: false, usado_por: null }).eq('id', cod.id);
+            throw memErr;
+        }
+
+        return res.json({
+            message: 'Te sumaste a la clínica',
+            clinica: { clinicaId: cod.clinica_id, nombre: cod.clinica?.nombre ?? null, rol: 'profesional' },
+        });
+    } catch (err) {
+        console.error('Error en unirse-clinica:', err);
+        return res.status(500).json({ error: 'No se pudo sumar a la clínica.' });
+    }
+};
+
+// Fase U — Un profesional YA registrado crea su propio consultorio (una clínica de la
+// que queda como admin), con la prueba de DIAS_PRUEBA días como cualquier clínica
+// nueva. Lo paga él; no afecta a las clínicas donde ya atiende.
+// Una sola prueba por cuenta: si ya administra (o administró) una clínica, no puede
+// crear otra desde acá (evita encadenar pruebas gratis).
+exports.crearConsultorio = async (req, res) => {
+    const deshacer = [];
+    try {
+        const { personaId, idRole } = req.session.user;
+        if (!personaId || !idRole) return res.status(403).json({ error: 'Solo un profesional puede crear su consultorio.' });
+
+        const { data: admin, error: admErr } = await supabase
+            .from('membresia')
+            .select('id, clinica:clinica_id ( nombre )')
+            .eq('id_persona', personaId)
+            .eq('rol', 'admin')
+            .limit(1);
+        if (admErr) throw admErr;
+        if (admin && admin.length > 0) {
+            const nombre = admin[0].clinica?.nombre;
+            return res.status(409).json({
+                error: `Ya administrás ${nombre ? `«${nombre}»` : 'una clínica'}: no podés crear otro consultorio con una prueba nueva. Escribinos si necesitás uno aparte.`,
+            });
+        }
+
+        const clinicaId = await insertarClinica(req.body.nombre);
+        deshacer.push(() => supabase.from('clinica').delete().eq('id', clinicaId));
+        deshacer.push(() => supabase.from('suscripcion').delete().eq('clinica_id', clinicaId));
+        await planes.crearPrueba(clinicaId);
+
+        const { error: memErr } = await supabase
+            .from('membresia')
+            .insert([{ id_persona: personaId, clinica_id: clinicaId, rol: 'admin', activo: true }]);
+        if (memErr) throw memErr;
+
+        return res.json({
+            message: 'Consultorio creado',
+            clinica: { clinicaId, nombre: String(req.body.nombre).trim(), rol: 'admin' },
+        });
+    } catch (err) {
+        console.error('Error en crear-consultorio:', err);
+        for (const paso of deshacer.reverse()) {
+            try { await paso(); } catch (e) { console.error('crear-consultorio: no se pudo deshacer un paso:', e.message); }
+        }
+        return res.status(500).json({ error: 'No se pudo crear el consultorio.' });
     }
 };
 

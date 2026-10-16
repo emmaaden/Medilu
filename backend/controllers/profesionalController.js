@@ -2,6 +2,7 @@
 // Fase 2c: opera con el cliente por-JWT (RLS por clinica_id a nivel Postgres).
 // La identidad se toma de la sesión (id = auth.users; idRole = profesional.id).
 const { getUserSupabase } = require('../middleware/userSupabase');
+const { errorDb, registrarError } = require('../utils/errores');
 
 const ERR_SESION = { error: 'Tu sesión expiró. Iniciá sesión de nuevo.' };
 
@@ -35,7 +36,7 @@ exports.getDatosProf = async (req, res) => {
 
         if (error) {
             console.error("Error obteniendo el profesional:", error);
-            return res.status(400).json({ error: error.message });
+            return errorDb(res, error);
         }
 
         if (!data) {
@@ -75,7 +76,7 @@ exports.getEspProf = async (req, res) => {
             .eq('id_profesional', user_id);
         if (error) {
             console.error("Error obteniendo el profesional:", error)
-            return res.status(400).json({ error: error.message })
+            return errorDb(res, error);
         }
 
         if (!data) {
@@ -105,7 +106,7 @@ exports.saveDesc = async (req, res) => {
             .select();
 
         if (error) {
-            return res.status(400).json({ error: error.message });
+            return errorDb(res, error);
         }
         if (!data) {
             return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -113,7 +114,8 @@ exports.saveDesc = async (req, res) => {
 
         res.status(200).json({ message: 'Descripcion guardada exitosamente', descripcion });
     } catch (error) {
-        res.status(500).json({ error: 'Error al guardar la Descripcion', details: error.message });
+        registrarError(error, 'Error al guardar la Descripcion');
+        res.status(500).json({ error: 'Error al guardar la Descripcion' });
     }
 };
 
@@ -134,7 +136,7 @@ exports.saveTurnosOnline = async (req, res) => {
             .select("turnos_online");
 
         if (error) {
-            return res.status(400).json({ error: error.message });
+            return errorDb(res, error);
         }
         if (!data || data.length === 0) {
             return res.status(404).json({ error: 'Profesional no encontrado' });
@@ -142,7 +144,8 @@ exports.saveTurnosOnline = async (req, res) => {
 
         res.status(200).json({ message: 'Turnos online actualizados', turnos_online: data[0].turnos_online });
     } catch (error) {
-        res.status(500).json({ error: 'Error al actualizar los turnos online', details: error.message });
+        registrarError(error, 'Error al actualizar los turnos online');
+        res.status(500).json({ error: 'Error al actualizar los turnos online' });
     }
 };
 
@@ -162,7 +165,7 @@ exports.savePrecio = async (req, res) => {
             .select();
 
         if (error) {
-            return res.status(400).json({ error: error.message });
+            return errorDb(res, error);
         }
         if (!data) {
             return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -170,7 +173,8 @@ exports.savePrecio = async (req, res) => {
 
         res.status(200).json({ message: 'Precio guardado exitosamente', precio });
     } catch (error) {
-        res.status(500).json({ error: 'Error al guardar el Precio', details: error.message });
+        registrarError(error, 'Error al guardar el Precio');
+        res.status(500).json({ error: 'Error al guardar el Precio' });
     }
 };
 
@@ -190,7 +194,7 @@ exports.saveDirec = async (req, res) => {
             .select();
 
         if (error) {
-            return res.status(400).json({ error: error.message });
+            return errorDb(res, error);
         }
         if (!data) {
             return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -198,7 +202,8 @@ exports.saveDirec = async (req, res) => {
 
         res.status(200).json({ message: 'Direccion guardada exitosamente', direccion });
     } catch (error) {
-        res.status(500).json({ error: 'Error al guardar la Direccion', details: error.message });
+        registrarError(error, 'Error al guardar la Direccion');
+        res.status(500).json({ error: 'Error al guardar la Direccion' });
     }
 };
 

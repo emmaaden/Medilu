@@ -20,6 +20,7 @@ const { getUserSupabase } = require('../middleware/userSupabase');
 const { serializarDiente } = require('../utils/odontograma');
 const { registrarAcceso, nombreActor } = require('../utils/bitacora');
 const { hoyAR } = require('../utils/fechaAR');
+const { errorDb } = require('../utils/errores');
 
 const BUCKET = 'autorizaciones';
 const SIGNED_TTL = 120; // segundos
@@ -262,7 +263,7 @@ exports.listar = async (req, res) => {
         const { data, error, count } = await q
             .order('creado_en', { ascending: false })
             .range(from, from + PAGE_SIZE - 1);
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         return res.json({
             autorizaciones: (data || []).map((a) => mapAutorizacion(a)),
@@ -306,7 +307,7 @@ exports.vigentes = async (req, res) => {
             .eq('estado', 'aprobada')
             .or(`vence_en.is.null,vence_en.gte.${hoyAR()}`)
             .order('resuelta_en', { ascending: false });
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         return res.json({
             autorizaciones: (data || []).map((a) => ({
@@ -382,7 +383,7 @@ exports.adjunto = async (req, res) => {
             .eq('id', adjuntoId)
             .eq('id_autorizacion', id)
             .maybeSingle();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         if (!adj) return res.status(404).json({ error: 'Adjunto no encontrado.' });
 
         const { data: signed, error: sErr } = await supabase.storage
@@ -451,7 +452,7 @@ exports.resolver = async (req, res) => {
             .eq('estado', 'pendiente') // evita resolver dos veces en paralelo
             .select('id')
             .maybeSingle();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         if (!upd) return res.status(409).json({ error: 'La autorización ya fue resuelta.' });
 
         await registrarAcceso(req, {
@@ -487,7 +488,7 @@ exports.cancelar = async (req, res) => {
             .eq('estado', 'pendiente')
             .select('id')
             .maybeSingle();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         if (!data) return res.status(409).json({ error: 'Solo podés cancelar una solicitud tuya que siga pendiente.' });
         return res.json({ message: 'Solicitud cancelada' });
     } catch (err) {

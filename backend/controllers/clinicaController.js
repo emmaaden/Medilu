@@ -7,6 +7,7 @@ const { resolverObraSocial } = require('../utils/cobertura');
 const planes = require('../utils/planes');
 
 const { generarCodigo: generarCodigoAleatorio, vencido } = require('../utils/codigoActivacion');
+const { errorDb } = require('../utils/errores');
 
 // Info de la clínica del usuario autenticado.
 exports.info = async (req, res) => {
@@ -22,7 +23,7 @@ exports.info = async (req, res) => {
             .select('nombre, slug, turnos_online')
             .eq('id', clinicaId)
             .maybeSingle();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         return res.json({ clinica: data, esAdmin: !!req.session.user.esAdmin });
     } catch (err) {
@@ -67,7 +68,7 @@ exports.generarCodigo = async (req, res) => {
                 .single();
             if (!error) { inserted = data; break; }
             if (error.code !== '23505') { // 23505 = unique_violation (colisión de código)
-                return res.status(400).json({ error: error.message });
+                return errorDb(res, error);
             }
         }
         if (!inserted) return res.status(500).json({ error: 'No se pudo generar un código único, reintentá.' });
@@ -93,7 +94,7 @@ exports.listarCodigos = async (req, res) => {
             .select('id, codigo, usado, rol, alcance_obra_social, creado_en')
             .eq('clinica_id', clinicaId)
             .order('creado_en', { ascending: false });
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         // Los sin usar que pasaron los 30 días ya no sirven para registrarse.
         return res.json({ codigos: (data || []).map((c) => ({ ...c, vencido: !c.usado && vencido(c.creado_en) })) });
@@ -123,7 +124,7 @@ exports.eliminarCodigo = async (req, res) => {
             .select('id, usado')
             .eq('id', codigoId)
             .maybeSingle();
-        if (selErr) return res.status(400).json({ error: selErr.message });
+        if (selErr) return errorDb(res, selErr);
         if (!cod) return res.status(404).json({ error: 'Código no encontrado.' });
         if (cod.usado) {
             return res.status(409).json({ error: 'El código ya fue utilizado; no se puede eliminar.' });
@@ -135,7 +136,7 @@ exports.eliminarCodigo = async (req, res) => {
             .delete()
             .eq('id', codigoId)
             .select('id');
-        if (delErr) return res.status(400).json({ error: delErr.message });
+        if (delErr) return errorDb(res, delErr);
         if (!del || del.length === 0) {
             // La RLS bloqueó el borrado (p. ej. dejó de estar libre entre el SELECT y el DELETE).
             return res.status(409).json({ error: 'No se pudo eliminar el código.' });

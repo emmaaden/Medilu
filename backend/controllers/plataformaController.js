@@ -8,6 +8,7 @@ const { supabase } = require('../config/supabaseClient');
 const planes = require('../utils/planes');
 const suscripcionMp = require('../utils/suscripcionMp');
 const mp = require('../utils/mercadopago');
+const { errorDb } = require('../utils/errores');
 
 // GET /plataforma/clinicas — todas las clínicas con su suscripción y uso.
 exports.listarClinicas = async (req, res) => {
@@ -85,7 +86,7 @@ exports.actualizarSuscripcion = async (req, res) => {
 
         const { data: cli, error: cliErr } = await supabase
             .from('clinica').select('id').eq('id', clinicaId).maybeSingle();
-        if (cliErr) return res.status(400).json({ error: cliErr.message });
+        if (cliErr) return errorDb(res, cliErr);
         if (!cli) return res.status(404).json({ error: 'Clínica no encontrada.' });
 
         const patch = { actualizada_en: new Date().toISOString() };
@@ -108,14 +109,14 @@ exports.actualizarSuscripcion = async (req, res) => {
 
         const { data: actual, error: aErr } = await supabase
             .from('suscripcion').select('clinica_id').eq('clinica_id', clinicaId).maybeSingle();
-        if (aErr) return res.status(400).json({ error: aErr.message });
+        if (aErr) return errorDb(res, aErr);
 
         // Una clínica sin suscripción (legacy) la obtiene acá.
         const q = actual
             ? supabase.from('suscripcion').update(patch).eq('clinica_id', clinicaId)
             : supabase.from('suscripcion').insert({ clinica_id: clinicaId, plan_id: planes.PLAN_PRUEBA, ...patch });
         const { data, error } = await q.select('*').single();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
 
         planes.invalidar(clinicaId);
         return res.json({ message: 'Suscripción actualizada', estado: planes.calcularEstado(data) });
@@ -144,7 +145,7 @@ exports.actualizarPlan = async (req, res) => {
 
         const { data, error } = await supabase
             .from('plan').update(patch).eq('id', req.params.id).select('id').maybeSingle();
-        if (error) return res.status(400).json({ error: error.message });
+        if (error) return errorDb(res, error);
         if (!data) return res.status(404).json({ error: 'Plan no encontrado.' });
 
         planes.invalidar();

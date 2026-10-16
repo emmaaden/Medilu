@@ -104,8 +104,15 @@ export default function ResetPassword() {
         window.location.href = "/login"
       }, 1500)
     } catch (err) {
+      // El detalle de Supabase (en inglés) queda en la consola; al usuario, un mensaje claro.
+      console.error("No se pudo actualizar la contraseña:", err)
+      const code = (err as { code?: string } | null)?.code
       const msg =
-        err instanceof Error ? err.message : "No se pudo actualizar la contraseña."
+        code === "same_password"
+          ? "La contraseña nueva tiene que ser distinta de la anterior."
+          : code === "weak_password"
+            ? "La contraseña es muy débil. Usá una más larga o con más variedad de caracteres."
+            : "No se pudo actualizar la contraseña. Probá de nuevo o pedí un enlace nuevo."
       toast.error(msg)
       setSubmitting(false)
     }

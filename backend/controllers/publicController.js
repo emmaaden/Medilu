@@ -10,6 +10,7 @@ require('dotenv').config();
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const { clinicasSinTurnosOnline } = require('../utils/turnosOnline'); // Fase N2
+const membresias = require('../utils/membresias');
 
 // Resuelve un slug de clínica a su fila (id, nombre, slug). Devuelve null si no existe.
 async function resolverClinicaPorSlug(slug) {
@@ -25,14 +26,9 @@ async function resolverClinicaPorSlug(slug) {
     return data || null;
 }
 
-// Ids de profesional que pertenecen a una clínica (vía persona.clinica_id).
-async function profesionalIdsDeClinica(clinicaId) {
-    const { data, error } = await supabase
-        .from('profesional')
-        .select('id, persona:id_persona!inner ( clinica_id )')
-        .eq('persona.clinica_id', clinicaId);
-    if (error) throw error;
-    return (data || []).map(p => p.id);
+// Ids de profesional que atienden en una clínica (Fase U: por membresía).
+function profesionalIdsDeClinica(clinicaId) {
+    return membresias.profesionalIdsDeClinica(supabase, clinicaId);
 }
 
 // GET /clinica-publica?clinica=<slug>
@@ -90,8 +86,9 @@ exports.listProfessionals = async (req, res) => {
     try {
         // Filtro por clínica (si viene el slug).
         let idsPermitidos = null;
+        let clinica = null;
         if (req.query.clinica) {
-            const clinica = await resolverClinicaPorSlug(req.query.clinica);
+            clinica = await resolverClinicaPorSlug(req.query.clinica);
             if (!clinica) return res.status(404).json({ error: 'Clínica no encontrada.' });
             idsPermitidos = new Set(await profesionalIdsDeClinica(clinica.id));
             if (idsPermitidos.size === 0) return res.json([]); // clínica sin profesionales
@@ -113,7 +110,9 @@ exports.listProfessionals = async (req, res) => {
             const p = row.profesional;
             if (!area || !p) continue;
             if (idsPermitidos && !idsPermitidos.has(p.id)) continue; // fuera de la clínica
-            if (p.persona && sinServicio.has(p.persona.clinica_id)) continue; // no recibe turnos online
+            // Con slug, la clínica es la de la página (Fase U: puede no ser la de origen).
+            const clinicaTurno = clinica ? clinica.id : p.persona && p.persona.clinica_id;
+            if (sinServicio.has(clinicaTurno)) continue; // no recibe turnos online
             if (p.turnos_online === false) continue; // Fase N3: el profesional no toma turnos online
 
             const nombre = [p.persona && p.persona.nombre, p.persona && p.persona.apellido]
@@ -140,21 +139,26 @@ exports.getBookingHours = async (req, res) => {
     try {
         // Filtro por clínica (si viene el slug).
         let idsPermitidos = null;
+        let clinica = null;
         if (req.query.clinica) {
-            const clinica = await resolverClinicaPorSlug(req.query.clinica);
+            clinica = await resolverClinicaPorSlug(req.query.clinica);
             if (!clinica) return res.status(404).json({ error: 'Clínica no encontrada.' });
             idsPermitidos = new Set(await profesionalIdsDeClinica(clinica.id));
             if (idsPermitidos.size === 0) return res.json([]);
         }
 
-        const { data, error } = await supabase
+        let consulta = supabase
             .from('horario_profesional')
             .select(`
                 id_profesional,
+                clinica_id,
                 horario_inicio,
                 horario_fin,
                 profesional:id_profesional ( id, turnos_online, persona ( nombre, apellido, clinica_id ) )
             `);
+        // Fase U: con slug, solo las franjas que el profesional atiende en esa clínica.
+        if (clinica) consulta = consulta.eq('clinica_id', clinica.id);
+        const { data, error } = await consulta;
         if (error) throw error;
         const sinServicio = await clinicasSinTurnosOnline();
 
@@ -165,7 +169,7 @@ exports.getBookingHours = async (req, res) => {
             if (idsPermitidos && !idsPermitidos.has(id)) continue;
 
             const persona = h.profesional && h.profesional.persona;
-            if (persona && sinServicio.has(persona.clinica_id)) continue; // no recibe turnos online
+            if (sinServicio.has(h.clinica_id)) continue; // no recibe turnos online
             if (h.profesional && h.profesional.turnos_online === false) continue; // Fase N3
             const fullName = [persona && persona.nombre, persona && persona.apellido]
                 .filter(Boolean)
