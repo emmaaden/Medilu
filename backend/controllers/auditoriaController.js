@@ -19,6 +19,7 @@ const { listarObrasSociales } = require('../utils/cobertura');
 const { serializarCodificacion, SELECT_CODIFICACION } = require('../utils/codificacion');
 const { ymdAR, hoyAR } = require('../utils/fechaAR');
 const { errorDb } = require('../utils/errores');
+const { calcEdad } = require('../utils/fechaNacimiento');
 
 const ERR_SESION = { status: 401, body: { error: 'Tu sesión expiró. Iniciá sesión de nuevo.' } };
 const PAGE_SIZE = 20;
@@ -51,17 +52,6 @@ function filtrarFechas(query, columna, q) {
     if (q.desde) query = query.gte(columna, `${q.desde}T00:00:00${TZ}`);
     if (q.hasta) query = query.lte(columna, `${q.hasta}T23:59:59.999${TZ}`);
     return query;
-}
-
-function calcEdad(fnac) {
-    if (!fnac) return null;
-    const b = new Date(fnac);
-    if (isNaN(b.getTime())) return null;
-    const t = new Date();
-    let edad = t.getFullYear() - b.getFullYear();
-    const mm = t.getMonth() - b.getMonth();
-    if (mm < 0 || (mm === 0 && t.getDate() < b.getDate())) edad--;
-    return edad;
 }
 
 function mapRevision(r) {

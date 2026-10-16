@@ -10,6 +10,7 @@ const { cerrarOtrasSesiones, regenerarSesion } = require('../utils/sesiones');
 const { vencido: codigoVencido, DIAS_VIGENCIA: DIAS_VIGENCIA_CODIGO } = require('../utils/codigoActivacion');
 const { layoutMail, parrafo, fuerte, boton, aviso } = require('../utils/emailLayout');
 const { errorDb, registrarError } = require('../utils/errores');
+const { parseFechaNacimiento } = require('../utils/fechaNacimiento');
 require('dotenv').config();
 
 // service_role: SALTEA la RLS. Se usa SOLO para operaciones sobre tablas.
@@ -73,6 +74,10 @@ exports.register = async (req, res) => {
         }
         deshacer.length = 0;
     };
+
+    // Antes de crear nada: una fecha imposible no se guarda.
+    const fnac = parseFechaNacimiento(fechaNacimiento);
+    if (!fnac.ok) return res.status(400).json({ error: fnac.error });
 
     try {
         // --- Fase 2: resolver la clínica del profesional ANTES de crear el usuario ---
@@ -228,7 +233,7 @@ exports.register = async (req, res) => {
                 apellido,
                 // Campos opcionales (minimización): un string vacío se guarda como NULL
                 // (una fecha vacía, además, rompería el INSERT en la columna date).
-                fecha_nacimiento: fechaNacimiento || null,
+                fecha_nacimiento: fnac.fecha,
                 telefono: telefono || null,
                 direccion: direccion || null,
                 sexo: sexo || null,

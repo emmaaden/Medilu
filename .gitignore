@@ -23,3 +23,7 @@ whisper/models/
 # Grabaciones de prueba del dictado y transcripciones del benchmark (whisper/benchmark.js)
 whisper/muestras/
 whisper/mediciones/
+
+# Otros entornos (p. ej. backend/.env.produccion con las credenciales de prod)
+.env.*
+!.env.example

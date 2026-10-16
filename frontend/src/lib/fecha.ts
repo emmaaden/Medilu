@@ -194,3 +194,22 @@ export function formatMesAnio(ymd: string): string {
 export function numeroDia(ymd: string): number {
   return aMediodia(ymd).getUTCDate()
 }
+
+/** Fecha de nacimiento más antigua aceptada (igual que backend/utils/fechaNacimiento.js). */
+export const FECHA_NAC_MIN = "1900-01-01"
+
+/**
+ * Error de una fecha de nacimiento "YYYY-MM-DD" (la del input type="date"), o null si
+ * es válida o está vacía. Mismas reglas que el backend: que exista y esté entre 1900 y hoy.
+ */
+export function errorFechaNacimiento(v: string): string | null {
+  if (!v) return null
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return "La fecha de nacimiento no es válida."
+  const d = new Date(`${v}T12:00:00Z`)
+  if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v) {
+    return "La fecha de nacimiento no existe. Revisá el día y el mes."
+  }
+  if (v < FECHA_NAC_MIN) return "La fecha de nacimiento no puede ser anterior a 1900."
+  if (v > hoyAR()) return "La fecha de nacimiento no puede ser posterior a hoy."
+  return null
+}

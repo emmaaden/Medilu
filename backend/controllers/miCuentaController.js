@@ -21,33 +21,10 @@ const { serializarCodificacion, SELECT_CODIFICACION } = require('../utils/codifi
 const { fichasPaciente } = require('../utils/fichasPaciente');
 const { canjearCodigoVinculacion } = require('../utils/cuentaPaciente');
 const { registrarAcceso } = require('../utils/bitacora');
+const { parseFechaNacimiento, calcEdad } = require('../utils/fechaNacimiento');
 
 // Campos de persona que el paciente puede editar (NO dni / id_auth / clinica_id).
 const CAMPOS_PERSONA = ['nombre', 'apellido', 'telefono', 'direccion', 'sexo'];
-
-// Normaliza fecha de nacimiento a ISO 'YYYY-MM-DD' (acepta 'dd/mm/yyyy' o ISO).
-function parseFechaNacimiento(f) {
-    if (!f) return null;
-    if (/^\d{4}-\d{2}-\d{2}/.test(f)) return f.slice(0, 10);
-    const m = String(f).match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-    if (m) {
-        const [, d, mo, y] = m;
-        const yr = y.length === 2 ? `20${y}` : y;
-        return `${yr}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
-    }
-    return null;
-}
-
-function calcEdad(fnac) {
-    if (!fnac) return '';
-    const b = new Date(fnac);
-    if (isNaN(b.getTime())) return '';
-    const t = new Date();
-    let edad = t.getFullYear() - b.getFullYear();
-    const mm = t.getMonth() - b.getMonth();
-    if (mm < 0 || (mm === 0 && t.getDate() < b.getDate())) edad--;
-    return String(edad);
-}
 
 function fmtFechaHora(iso) {
     if (!iso) return '';
@@ -126,6 +103,9 @@ exports.getPerfil = async (req, res) => {
 // ---------------------------------------------------------------------------
 exports.updatePerfil = async (req, res) => {
     try {
+        const fnac = parseFechaNacimiento(req.body.fechaNacimiento);
+        if (!fnac.ok) return res.status(400).json({ error: fnac.error });
+
         const fichas = await getFichas(req.session);
         if (fichas.length === 0) return res.status(404).json({ error: 'No encontramos tus datos.' });
 
@@ -136,7 +116,7 @@ exports.updatePerfil = async (req, res) => {
         }
         if (req.body.email !== undefined) updatePersona.email = req.body.email || null;
         if (req.body.fechaNacimiento !== undefined) {
-            updatePersona.fecha_nacimiento = parseFechaNacimiento(req.body.fechaNacimiento);
+            updatePersona.fecha_nacimiento = fnac.fecha;
         }
 
         if (Object.keys(updatePersona).length > 0) {
@@ -267,7 +247,7 @@ exports.getHistoria = async (req, res) => {
             sexo: persona.sexo || '',
             direccion: persona.direccion || '',
             fechaNacimiento: fmtFecha(persona.fecha_nacimiento),
-            edad: calcEdad(persona.fecha_nacimiento),
+            edad: String(calcEdad(persona.fecha_nacimiento) ?? ''),
             obraSocial: paciente.obra_social || '',
             nroAfiliado: paciente.nro_afiliado || '',
             plan: paciente.plan || '',

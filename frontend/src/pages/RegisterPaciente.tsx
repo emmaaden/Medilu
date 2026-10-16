@@ -16,6 +16,7 @@ import { CoberturaFields } from "@/components/form/CoberturaFields"
 import { COBERTURA_VACIA, coberturaPayload, type Cobertura } from "@/lib/catalogos"
 import { Container } from "@/components/site/Section"
 import { api, ApiError } from "@/lib/api"
+import { errorFechaNacimiento, FECHA_NAC_MIN, hoyAR } from "@/lib/fecha"
 
 const schema = z.object({
   dni: z.string().min(6, "DNI inválido"),
@@ -24,7 +25,10 @@ const schema = z.object({
     .min(1, "Seleccioná una opción"),
   nombre: z.string().min(2, "Requerido"),
   apellido: z.string().min(2, "Requerido"),
-  fechaNacimiento: z.string().min(1, "Requerido"),
+  fechaNacimiento: z
+    .string()
+    .min(1, "Requerido")
+    .refine((v) => !errorFechaNacimiento(v), (v) => ({ message: errorFechaNacimiento(v) ?? "" })),
   telefono: z.string().min(6, "Teléfono inválido"),
   // Opcional (minimización, Ley 25.326 art. 4): no hace falta para turnos ni HC.
   direccion: z.string().optional(),
@@ -156,6 +160,8 @@ export default function RegisterPaciente() {
                 <Input
                   id="fechaNacimiento"
                   type="date"
+                  min={FECHA_NAC_MIN}
+                  max={hoyAR()}
                   className="h-10"
                   aria-invalid={!!errors.fechaNacimiento}
                   {...register("fechaNacimiento")}

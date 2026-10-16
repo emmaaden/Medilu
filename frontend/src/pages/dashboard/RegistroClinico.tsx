@@ -60,6 +60,7 @@ import {
   type Codificacion,
 } from "@/lib/catalogos"
 import { ESTADO_AUDITORIA, type EstadoAuditoria } from "@/lib/auditoria"
+import { errorFechaNacimiento, FECHA_NAC_MIN, hoyAR } from "@/lib/fecha"
 
 const SEXO = [
   { value: "Masculino", label: "Masculino" },
@@ -400,6 +401,11 @@ function RegistrarPaciente({
       toast.warning("Completá los datos personales obligatorios.")
       return
     }
+    const errorFecha = errorFechaNacimiento(form.fechaNacimiento)
+    if (errorFecha) {
+      toast.warning(errorFecha)
+      return
+    }
     if (duplicado?.dni === form.dni.trim()) {
       toast.warning("Ese DNI ya es paciente de tu clínica. Cargá sus datos para seguir.")
       return
@@ -581,8 +587,22 @@ function RegistrarPaciente({
                 <Field label="Dirección" htmlFor="direccion" required>
                   <Input id="direccion" className="h-10" value={form.direccion} onChange={set("direccion")} />
                 </Field>
-                <Field label="Fecha de nacimiento" htmlFor="fechaNacimiento" required>
-                  <Input id="fechaNacimiento" type="date" className="h-10" value={form.fechaNacimiento} onChange={set("fechaNacimiento")} />
+                <Field
+                  label="Fecha de nacimiento"
+                  htmlFor="fechaNacimiento"
+                  required
+                  error={errorFechaNacimiento(form.fechaNacimiento) ?? undefined}
+                >
+                  <Input
+                    id="fechaNacimiento"
+                    type="date"
+                    min={FECHA_NAC_MIN}
+                    max={hoyAR()}
+                    className="h-10"
+                    aria-invalid={!!errorFechaNacimiento(form.fechaNacimiento)}
+                    value={form.fechaNacimiento}
+                    onChange={set("fechaNacimiento")}
+                  />
                 </Field>
                 <Field label="Edad" htmlFor="edad">
                   <Input id="edad" type="number" className="h-10" value={form.edad} onChange={set("edad")} />

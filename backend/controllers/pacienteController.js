@@ -32,6 +32,7 @@ const {
     serializarCodificacion,
     SELECT_CODIFICACION,
 } = require('../utils/codificacion');
+const { parseFechaNacimiento, calcEdad } = require('../utils/fechaNacimiento');
 
 // Mensaje uniforme cuando la sesión no tiene (o perdió) el token de Supabase.
 const ERR_SESION = { status: 401, body: { error: 'Tu sesión expiró. Iniciá sesión de nuevo.' } };
@@ -40,20 +41,6 @@ const ERR_SESION = { status: 401, body: { error: 'Tu sesión expiró. Iniciá se
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Normaliza una fecha de nacimiento a ISO 'YYYY-MM-DD'.
-// El frontend suele enviar 'dd/mm/yyyy' (toLocaleDateString es-AR).
-function parseFechaNacimiento(f) {
-    if (!f) return null;
-    if (/^\d{4}-\d{2}-\d{2}/.test(f)) return f.slice(0, 10); // ya viene ISO
-    const m = String(f).match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-    if (m) {
-        const [, d, mo, y] = m;
-        const yr = y.length === 2 ? `20${y}` : y;
-        return `${yr}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
-    }
-    return null;
-}
-
 // Devuelve un ISO válido para timestamptz o null (para dejar el default now()).
 function toIso(v) {
     if (!v) return null;
@@ -61,17 +48,6 @@ function toIso(v) {
     return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-// Edad calculada a partir de la fecha de nacimiento (no se confía en el valor del cliente).
-function calcEdad(fnac) {
-    if (!fnac) return '';
-    const b = new Date(fnac);
-    if (isNaN(b.getTime())) return '';
-    const t = new Date();
-    let edad = t.getFullYear() - b.getFullYear();
-    const mm = t.getMonth() - b.getMonth();
-    if (mm < 0 || (mm === 0 && t.getDate() < b.getDate())) edad--;
-    return String(edad);
-}
 
 // Fecha + hora legible para la historia clínica.
 function fmtFechaHora(iso) {
@@ -184,6 +160,8 @@ exports.regisPacient = async (req, res) => {
         if (!dni || !fullName) {
             return res.status(400).json({ error: 'Nombre y DNI son obligatorios.' });
         }
+        const fnac = parseFechaNacimiento(fechaNacimiento);
+        if (!fnac.ok) return res.status(400).json({ error: fnac.error });
 
         const db = await getUserSupabase(req);
         if (!db) return res.status(ERR_SESION.status).json(ERR_SESION.body);
@@ -258,7 +236,7 @@ exports.regisPacient = async (req, res) => {
                 telefono: telefono || null,
                 direccion: direccion || null,
                 sexo: sexo || null,
-                fecha_nacimiento: parseFechaNacimiento(fechaNacimiento),
+                fecha_nacimiento: fnac.fecha,
                 email: email || null,
                 clinica_id: prof.clinicaId,
             })
@@ -356,7 +334,7 @@ async function sumarAutoregistrado(req, res, db, prof, cob, cod, persona) {
         telefono: telefono || null,
         direccion: direccion || null,
         sexo: sexo || null,
-        fecha_nacimiento: parseFechaNacimiento(fechaNacimiento),
+        fecha_nacimiento: parseFechaNacimiento(fechaNacimiento).fecha, // ya validada en regisPacient
         email: String(email).trim().toLowerCase(),
     };
     const update = { clinica_id: prof.clinicaId };
@@ -663,7 +641,7 @@ exports.getDataPacient = async (req, res) => {
             sexo: persona.sexo || '',
             direccion: persona.direccion || '',
             fechaNacimiento: fmtFecha(persona.fecha_nacimiento),
-            edad: calcEdad(persona.fecha_nacimiento),
+            edad: String(calcEdad(persona.fecha_nacimiento) ?? ''),
             obraSocial: paciente.obra_social || '',
             idObraSocial: paciente.id_obra_social || null,
             nroAfiliado: paciente.nro_afiliado || '',
