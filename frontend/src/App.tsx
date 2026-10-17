@@ -26,6 +26,7 @@ const Cookies = lazy(() => import("@/pages/Cookies"))
 const Reembolsos = lazy(() => import("@/pages/Reembolsos"))
 const Accesibilidad = lazy(() => import("@/pages/Accesibilidad"))
 const SolicitudConsumo = lazy(() => import("@/pages/SolicitudConsumo"))
+const ReporteSuplantacion = lazy(() => import("@/pages/ReporteSuplantacion"))
 
 // Páginas con dependencias pesadas (jsPDF / Supabase) → carga diferida.
 const Turnos = lazy(() => import("@/pages/Turnos"))
@@ -151,6 +152,7 @@ function App() {
             element={<SolicitudConsumo key="arrepentimiento" tipo="arrepentimiento" />}
           />
           <Route path="/baja" element={<SolicitudConsumo key="baja" tipo="baja" />} />
+          <Route path="/reportar-suplantacion" element={<ReporteSuplantacion />} />
           <Route path="*" element={<NotFound />} />
         </Route>
 

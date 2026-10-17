@@ -152,9 +152,14 @@ async function conCodigoSiFaltaEmail(req, personaId, cuenta) {
 // ---------------------------------------------------------------------------
 exports.regisPacient = async (req, res) => {
     try {
-        const { fullName, dni, telefono, email, sexo, direccion, fechaNacimiento, obraSocial } = req.body;
+        const { dni, telefono, email, sexo, direccion, fechaNacimiento, obraSocial } = req.body;
+        // El panel manda nombre y apellido separados; los clientes viejos, `fullName`
+        // todo junto (queda entero en `nombre`, como hasta ahora).
+        const nombre = (req.body.nombre || req.body.fullName || '').trim();
+        const apellido = req.body.nombre ? (req.body.apellido || '').trim() || null : null;
+        const fullName = [nombre, apellido].filter(Boolean).join(' ');
 
-        if (!dni || !fullName) {
+        if (!dni || !nombre) {
             return res.status(400).json({ error: 'Nombre y DNI son obligatorios.' });
         }
         const fnac = parseFechaNacimiento(fechaNacimiento);
@@ -238,7 +243,8 @@ exports.regisPacient = async (req, res) => {
                 // cuenta. La cuenta del paciente se crea/vincula después (crearCuentaPaciente).
                 id_auth: null,
                 dni,
-                nombre: fullName,
+                nombre,
+                apellido,
                 telefono: telefono || null,
                 direccion: direccion || null,
                 sexo: sexo || null,
@@ -275,7 +281,7 @@ exports.regisPacient = async (req, res) => {
                 paciente: { nombre: fullName, dni },
             }),
             crearCuentaPaciente({
-                personaId: persona.id, email, nombre: fullName, clinicaId: prof.clinicaId, esperarMail: false,
+                personaId: persona.id, email, nombre, clinicaId: prof.clinicaId, esperarMail: false,
             }).then((c) => conCodigoSiFaltaEmail(req, persona.id, c)),
         ]);
 

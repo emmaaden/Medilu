@@ -393,6 +393,24 @@ export function DashboardNavbar() {
                 <p className="mb-2 truncate px-1 text-xs text-muted-foreground">
                   {user?.email}
                 </p>
+                {clinicaActiva && (
+                  <div className="mb-2 px-1">
+                    <p className="flex items-center gap-1.5 text-sm font-medium">
+                      <Building2 className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{clinicaActiva.nombre}</span>
+                    </p>
+                    <p className="mt-0.5 pl-5 text-xs text-muted-foreground">
+                      {ROL_LABEL[clinicaActiva.rol] ?? clinicaActiva.rol}
+                    </p>
+                  </div>
+                )}
+                {puedeCambiarClinica && (
+                  <Button asChild variant="ghost" className="mb-2 w-full">
+                    <Link to="/seleccionar-clinica?cambiar=1" onClick={() => setOpen(false)}>
+                      <ArrowLeftRight /> Cambiar de clínica
+                    </Link>
+                  </Button>
+                )}
                 {user?.perfiles?.includes("paciente") && (
                   <Button variant="ghost" className="mb-2 w-full" onClick={entrarComoPaciente}>
                     <UserRound /> Entrar como paciente

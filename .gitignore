@@ -24,6 +24,13 @@ whisper/models/
 whisper/muestras/
 whisper/mediciones/
 
+# Seed de datos de prueba (la clave de DEV está en config.js; salida/ tiene cuentas, mails y logs)
+backend/db/seed/
+
+# Pruebas en seco de las fases de RLS (solo locales)
+faseP_prueba_en_seco.sql
+faseU_prueba_en_seco.sql
+
 # Otros entornos (p. ej. backend/.env.produccion con las credenciales de prod)
 .env.*
 !.env.example

@@ -48,6 +48,7 @@ const TITULOS: Record<string, string> = {
   "/reembolsos": "Política de reembolsos",
   "/arrepentimiento": "Botón de arrepentimiento",
   "/baja": "Botón de baja de servicio",
+  "/reportar-suplantacion": "Reportar suplantación de identidad",
   "/accesibilidad": "Accesibilidad",
   "/dashboard": "Panel",
   "/dashboard/turnos": "Turnos · Panel",
