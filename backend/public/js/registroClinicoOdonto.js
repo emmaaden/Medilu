@@ -92,7 +92,7 @@ async function addPacient() {
       icon: "error",
       title: "Oops...",
       text: `Paciente ya registrado: ${errorData.error}`,
-      footer: '<a href="https://wa.me/2615930274">Ayuda</a>'
+      footer: '<a href="https://wa.me/2617725639">Ayuda</a>'
     });
     //alert(errorData.error || "Error en el registro.");
   }
@@ -259,7 +259,7 @@ async function saveDataPaciente() {
       icon: "error",
       title: "Oops...",
       text: `No Guardado: ${errorData.error}`,
-      footer: '<a href="https://wa.me/2615930274">Ayuda</a>'
+      footer: '<a href="https://wa.me/2617725639">Ayuda</a>'
     });
     //alert(errorData.error || "Error al cargar los datos del paciente.");
   }

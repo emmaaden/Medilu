@@ -1,8 +1,8 @@
 /** Constantes compartidas del sitio público. */
 
-export const WHATSAPP_NUMBER = "2615930274"
+export const WHATSAPP_NUMBER = "2617725639"
 export const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`
-export const CONTACT_EMAIL = "emma26228@gmail.com"
+export const CONTACT_EMAIL = "soportemedilu@gmail.com"
 
 /**
  * Datos del titular del sitio (Ley 24.240 art. 4 y Ley 25.326: el usuario tiene
@@ -18,13 +18,13 @@ export const BUSINESS = {
   /** Titular / responsable (persona humana o razón social). */
   titular: "Emmanuel Denis",
   /** CUIT del titular. Formato 20-12345678-9. */
-  cuit: "",
+  cuit: "20-45715063-7",
   /** Domicilio legal/fiscal completo (calle, número, localidad, provincia). */
   domicilio: "",
   /** Jurisdicción para reclamos y competencia (provincia del domicilio). */
   provincia: "Mendoza",
   email: CONTACT_EMAIL,
-  telefono: "+54 9 261 593-0274",
+  telefono: "+54 9 261 772-5639",
 } as const
 
 /** Texto a mostrar cuando un dato del titular todavía no se cargó. */
@@ -38,7 +38,7 @@ export function datoNegocio(valor: string) {
  * Privacidad, junto con LEGAL_UPDATED.
  */
 export const LEGAL_VERSION = "2026-10-06"
-export const LEGAL_UPDATED = "6 de octubre de 2026"
+export const LEGAL_UPDATED = "17 de octubre de 2026"
 
 /**
  * Formulario oficial de reclamos de consumo. La Res. SCI 274/2021 que obligaba a
