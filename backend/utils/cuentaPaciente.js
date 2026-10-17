@@ -17,7 +17,7 @@
 
 const crypto = require('crypto');
 const { supabase } = require('../config/supabaseClient');
-const { sendMail } = require('./mailer');
+const { sendMail, isMailerConfigured } = require('./mailer');
 const { layoutMail, parrafo, fuerte, link, boton, datos, aviso, nota, esc } = require('./emailLayout');
 
 // Sin caracteres ambiguos (0/O, 1/l/I) para que sea fácil de tipear desde el mail.
@@ -50,6 +50,15 @@ function enviarAlPaciente(mail) {
     const prueba = (process.env.MAIL_PRUEBA || '').trim();
     if (!prueba) return sendMail(mail);
     return sendMail({ ...mail, to: prueba, subject: `[PRUEBA para ${mail.to}] ${mail.subject}` });
+}
+
+// Manda un mail sin esperarlo: conectarse a Gmail tarda ~2 s y el alta no tiene por qué
+// esperarlo. Si falla queda en el log; el paciente igual puede entrar con "¿Olvidaste tu
+// contraseña?" (la cuenta se crea confirmada).
+function enSegundoPlano(enviar, que) {
+    Promise.resolve()
+        .then(enviar)
+        .catch((e) => console.error(`Cuenta paciente: no se pudo enviar ${que}:`, e.message || e));
 }
 
 async function enviarDatosAcceso({ email, nombre, clave, clinica }) {
@@ -124,14 +133,19 @@ async function avisarVinculacion({ email, nombre, clinica }) {
 // paciente ya ocurrió y no debe fallar por la cuenta. Devuelve:
 //   { estado: 'creada', mailEnviado, claveTemporal? }  (la clave solo si el mail NO salió,
 //                                                        para que el profesional se la dé)
-//   { estado: 'vinculada', mailEnviado }  ya tenía cuenta (mismo DNI y email): se vinculó
+//   { estado: 'creada', mailEnCurso: true }  con `esperarMail: false`: el mail sale en
+//                                            segundo plano y la clave no se devuelve
+//   { estado: 'vinculada', mailEnviado | mailEnCurso }  ya tenía cuenta (mismo DNI y
+//                                                       email): se vinculó
 //   { estado: 'email_en_uso' }  ese email es de otra cuenta (otro DNI): no se vincula
 //   { estado: 'sin_email' }
 //   { estado: 'error' }
-async function crearCuentaPaciente({ personaId, email, nombre, clinicaId }) {
+// Sin mailer configurado se espera igual (no hay nada que mandar) y se devuelve la clave.
+async function crearCuentaPaciente({ personaId, email, nombre, clinicaId, esperarMail = true }) {
     const mail = String(email || '').trim().toLowerCase();
     if (!mail) return { estado: 'sin_email' };
 
+    const segundoPlano = !esperarMail && isMailerConfigured();
     try {
         const clave = generarContrasena();
         const { data, error } = await supabase.auth.admin.createUser({
@@ -142,7 +156,7 @@ async function crearCuentaPaciente({ personaId, email, nombre, clinicaId }) {
         });
         if (error) {
             if (esEmailEnUso(error)) {
-                return (await vincularCuentaExistente({ personaId, email: mail, nombre, clinicaId }))
+                return (await vincularCuentaExistente({ personaId, email: mail, nombre, clinicaId, segundoPlano }))
                     || { estado: 'email_en_uso' };
             }
             throw error;
@@ -159,6 +173,13 @@ async function crearCuentaPaciente({ personaId, email, nombre, clinicaId }) {
             await supabase.auth.admin.deleteUser(data.user.id).catch(() => {});
             if (updErr) throw updErr;
             return { estado: 'error' };
+        }
+
+        if (segundoPlano) {
+            enSegundoPlano(async () => enviarDatosAcceso({
+                email: mail, nombre, clave, clinica: await nombreClinica(clinicaId),
+            }), 'el email de acceso');
+            return { estado: 'creada', mailEnCurso: true };
         }
 
         let mailEnviado = false;
@@ -179,7 +200,7 @@ async function crearCuentaPaciente({ personaId, email, nombre, clinicaId }) {
 // Fase O: el email ya tiene cuenta. Si alguna persona con el MISMO DNI está vinculada
 // a una cuenta con ESE email, es la misma persona: la ficha nueva se ata a esa cuenta
 // (una persona por clínica por cuenta) y se le avisa. Devuelve null si no corresponde.
-async function vincularCuentaExistente({ personaId, email, nombre, clinicaId }) {
+async function vincularCuentaExistente({ personaId, email, nombre, clinicaId, segundoPlano }) {
     const { data: persona, error } = await supabase
         .from('persona')
         .select('dni, id_auth')
@@ -213,6 +234,11 @@ async function vincularCuentaExistente({ personaId, email, nombre, clinicaId }) 
             throw updErr;
         }
         if (!upd || upd.length === 0) return null;
+
+        if (segundoPlano) {
+            enSegundoPlano(async () => avisarVinculacion({ email, nombre, clinica: await nombreClinica(clinicaId) }), 'el aviso de vinculación');
+            return { estado: 'vinculada', mailEnCurso: true };
+        }
 
         let mailEnviado = false;
         try {
@@ -368,6 +394,7 @@ async function canjearCodigoVinculacion({ authId, codigo }) {
 }
 
 module.exports = {
+    enSegundoPlano,
     crearCuentaPaciente,
     buscarAutoregistrado,
     avisarVinculacion,

@@ -181,6 +181,8 @@ function MenuCard({
 type CuentaPaciente = {
   estado: "creada" | "vinculada" | "email_en_uso" | "sin_email" | "error"
   mailEnviado?: boolean
+  /** El alta no espera el email: sale en segundo plano. */
+  mailEnCurso?: boolean
   claveTemporal?: string
   /** Sin email: código para que el paciente vincule su historia cuando se registre. */
   codigo?: string
@@ -239,15 +241,18 @@ function errorCode(err: unknown) {
 
 /** Qué pasó con el acceso del paciente, para mostrárselo al profesional. */
 function AccesoResultado({ cuenta, email }: { cuenta: CuentaPaciente; email: string }) {
-  if (cuenta.estado === "creada" && cuenta.mailEnviado) {
+  if (cuenta.estado === "creada" && (cuenta.mailEnviado || cuenta.mailEnCurso)) {
     return (
       <Alert>
         <MailCheck aria-hidden />
-        <AlertTitle>Le enviamos sus datos de acceso</AlertTitle>
+        <AlertTitle>
+          {cuenta.mailEnviado ? "Le enviamos sus datos de acceso" : "Le estamos enviando sus datos de acceso"}
+        </AlertTitle>
         <AlertDescription>
           <p>
-            Llegan a <strong className="break-all text-foreground">{email}</strong>. Con eso entra a
-            Medilu y ve su historia clínica. Si no le llega, que revise el spam.
+            Llegan a <strong className="break-all text-foreground">{email}</strong> en unos minutos.
+            Con eso entra a Medilu y ve su historia clínica. Si no le llega, que revise el spam o
+            entre con “¿Olvidaste tu contraseña?”.
           </p>
         </AlertDescription>
       </Alert>

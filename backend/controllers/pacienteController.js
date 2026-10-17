@@ -15,10 +15,11 @@
 
 const { getUserSupabase } = require('../middleware/userSupabase');
 const { filasParaRegistro, serializarDiente } = require('../utils/odontograma');
-const { registrarAcceso } = require('../utils/bitacora');
+const { registrarAcceso, nombreActor } = require('../utils/bitacora');
 const { columnasCobertura } = require('../utils/cobertura');
 const { supabase } = require('../config/supabaseClient');
 const {
+    enSegundoPlano,
     crearCuentaPaciente,
     buscarAutoregistrado,
     avisarVinculacion,
@@ -75,29 +76,25 @@ function fmtFecha(iso) {
 }
 
 // Datos del profesional autenticado (nombre + área) tomados de la sesión.
-async function getProfContext(db, session) {
-    const personaId = session.user.personaId; // persona de staff (Fase O: no por id_auth,
-    const idRole = session.user.idRole;       // que puede tener además fichas de paciente)
+// Son datos del propio profesional (ids de la sesión), así que se leen con service_role:
+// la RLS de especialidad_profesional recorre todos los profesionales y tardaba ~800 ms.
+// El nombre sale de nombreActor (persona de staff, cacheado en la sesión).
+async function getProfContext(req) {
+    const idRole = req.session.user.idRole; // profesional.id
 
-    let nombre = '';
-    const { data: per } = await db
-        .from('persona')
-        .select('nombre, apellido')
-        .eq('id', personaId)
-        .maybeSingle();
-    if (per) nombre = [per.nombre, per.apellido].filter(Boolean).join(' ');
+    const [nombre, area] = await Promise.all([
+        nombreActor(req),
+        idRole
+            ? supabase
+                .from('especialidad_profesional')
+                .select('id_especialidad ( nombre )')
+                .eq('id_profesional', idRole)
+                .limit(1)
+                .then(({ data: esp }) => (esp && esp[0] && esp[0].id_especialidad ? esp[0].id_especialidad.nombre : ''))
+            : '',
+    ]);
 
-    let area = '';
-    if (idRole) {
-        const { data: esp } = await db
-            .from('especialidad_profesional')
-            .select('id_especialidad ( nombre )')
-            .eq('id_profesional', idRole)
-            .limit(1);
-        if (esp && esp[0] && esp[0].id_especialidad) area = esp[0].id_especialidad.nombre;
-    }
-
-    return { idProfesional: idRole || null, nombre, area, clinicaId: session.user.clinicaId || null };
+    return { idProfesional: idRole || null, nombre: nombre || '', area, clinicaId: req.session.user.clinicaId || null };
 }
 
 // Inserta el registro clínico + el estado del odontograma (si viene) + la
@@ -166,29 +163,38 @@ exports.regisPacient = async (req, res) => {
         const db = await getUserSupabase(req);
         if (!db) return res.status(ERR_SESION.status).json(ERR_SESION.body);
 
-        const prof = await getProfContext(db, req.session);
-        if (!prof.clinicaId) {
+        const clinicaId = req.session.user.clinicaId;
+        if (!clinicaId) {
             return res.status(400).json({ error: 'Tu usuario no tiene una clínica asignada.' });
         }
 
-        // Fase K: cobertura y codificación se validan ANTES de crear nada.
-        const cob = await columnasCobertura(req.body, prof.clinicaId);
-        if (!cob.ok) return res.status(400).json({ error: cob.error });
-        const cod = await prepararCodificacion({
-            clinicaId: prof.clinicaId,
-            idPaciente: null, // paciente nuevo: no puede tener autorizaciones todavía
-            diagnosticos: req.body.diagnosticos,
-            practicas: req.body.practicas,
-        });
-        if (!cod.ok) return res.status(400).json({ error: cod.error });
+        // ¿El paciente ya se había registrado solo en Medilu (sin clínica)? Se busca ya,
+        // en paralelo, pero solo se usa si no hay nadie con ese DNI en la clínica (abajo).
+        const autoP = email ? buscarAutoregistrado(dni, email) : Promise.resolve(null);
+        autoP.catch(() => {}); // si no se llega a usar, que su error no quede sin manejar
 
-        // ¿Ya existe una persona con ese DNI EN ESTA CLÍNICA?
-        const { data: existente } = await db
-            .from('persona')
-            .select('id, id_auth, nombre, apellido, email, paciente(id)')
-            .eq('dni', dni)
-            .eq('clinica_id', prof.clinicaId)
-            .maybeSingle();
+        // Las verificaciones no dependen entre sí: van en paralelo (cada una es un viaje
+        // a Supabase). Se responden en el mismo orden que antes.
+        const [prof, cob, cod, { data: existente }] = await Promise.all([
+            getProfContext(req),
+            // Fase K: cobertura y codificación se validan ANTES de crear nada.
+            columnasCobertura(req.body, clinicaId),
+            prepararCodificacion({
+                clinicaId,
+                idPaciente: null, // paciente nuevo: no puede tener autorizaciones todavía
+                diagnosticos: req.body.diagnosticos,
+                practicas: req.body.practicas,
+            }),
+            // ¿Ya existe una persona con ese DNI EN ESTA CLÍNICA?
+            db
+                .from('persona')
+                .select('id, id_auth, nombre, apellido, email, paciente(id)')
+                .eq('dni', dni)
+                .eq('clinica_id', clinicaId)
+                .maybeSingle(),
+        ]);
+        if (!cob.ok) return res.status(400).json({ error: cob.error });
+        if (!cod.ok) return res.status(400).json({ error: cod.error });
         // Fase O: es alguien del equipo de la clínica (persona sin ficha de paciente):
         // se le agrega la ficha a esa misma persona en vez de duplicarla.
         if (existente && !(existente.paciente && existente.paciente[0])) {
@@ -209,10 +215,10 @@ exports.regisPacient = async (req, res) => {
             });
         }
 
-        // ¿El paciente ya se había registrado solo en Medilu (sin clínica)? Si el email
-        // coincide con el de su cuenta, se suma a la clínica en vez de duplicarlo: así
-        // ve en su cuenta lo que le cargan. DNI + email es lo que prueba que es él.
-        const auto = email ? await buscarAutoregistrado(dni, email) : null;
+        // Ya se había registrado solo: si el email coincide con el de su cuenta, se suma
+        // a la clínica en vez de duplicarlo: así ve en su cuenta lo que le cargan.
+        // DNI + email es lo que prueba que es él.
+        const auto = await autoP;
         if (auto && !auto.coincide) {
             return res.status(409).json({
                 error: 'Este DNI ya tiene una cuenta de paciente en Medilu con otro email. Pedile al paciente el email con el que se registró.',
@@ -259,17 +265,19 @@ exports.regisPacient = async (req, res) => {
         // 3. primer registro clínico (+ odontograma)
         const idRegistro = await insertRegistro(db, paciente.id, prof, req.body, cod);
 
-        await registrarAcceso(req, {
-            accion: 'registrar_paciente',
-            idPaciente: paciente.id,
-            idRegistro,
-            paciente: { nombre: fullName, dni },
-        });
-
-        // 4. Cuenta de acceso + email con los datos (no rompe el alta si falla).
-        const cuenta = await conCodigoSiFaltaEmail(req, persona.id, await crearCuentaPaciente({
-            personaId: persona.id, email, nombre: fullName, clinicaId: prof.clinicaId,
-        }));
+        // 4. Bitácora y, en paralelo, la cuenta de acceso (no rompe el alta si falla; el
+        // email con los datos sale en segundo plano).
+        const [, cuenta] = await Promise.all([
+            registrarAcceso(req, {
+                accion: 'registrar_paciente',
+                idPaciente: paciente.id,
+                idRegistro,
+                paciente: { nombre: fullName, dni },
+            }),
+            crearCuentaPaciente({
+                personaId: persona.id, email, nombre: fullName, clinicaId: prof.clinicaId, esperarMail: false,
+            }).then((c) => conCodigoSiFaltaEmail(req, persona.id, c)),
+        ]);
 
         return res.status(201).json({ message: 'Paciente registrado con éxito', id_paciente: paciente.id, cuenta });
     } catch (err) {
@@ -302,22 +310,20 @@ async function sumarPersonaDeLaClinica(req, res, db, prof, cob, cod, persona) {
 
     let cuenta;
     if (persona.id_auth) {
-        let mailEnviado = false;
-        try {
+        enSegundoPlano(async () => {
             const { data } = await supabase.auth.admin.getUserById(persona.id_auth);
             const email = data && data.user && data.user.email;
             if (email) {
-                mailEnviado = await avisarVinculacion({
+                await avisarVinculacion({
                     email, nombre: persona.nombre, clinica: await nombreClinica(prof.clinicaId),
                 });
             }
-        } catch (e) {
-            console.error('No se pudo avisar la vinculación al paciente:', e.message);
-        }
-        cuenta = { estado: 'vinculada', mailEnviado };
+        }, 'el aviso de vinculación');
+        cuenta = { estado: 'vinculada', mailEnCurso: true };
     } else {
         cuenta = await conCodigoSiFaltaEmail(req, persona.id, await crearCuentaPaciente({
             personaId: persona.id, email: req.body.email || persona.email, nombre, clinicaId: prof.clinicaId,
+            esperarMail: false,
         }));
     }
 
@@ -373,19 +379,14 @@ async function sumarAutoregistrado(req, res, db, prof, cob, cod, persona) {
         detalle: { vinculado: true },
     });
 
-    let mailEnviado = false;
-    try {
-        mailEnviado = await avisarVinculacion({
-            email: nuevos.email, nombre: persona.nombre, clinica: await nombreClinica(prof.clinicaId),
-        });
-    } catch (e) {
-        console.error('No se pudo avisar la vinculación al paciente:', e.message);
-    }
+    enSegundoPlano(async () => avisarVinculacion({
+        email: nuevos.email, nombre: persona.nombre, clinica: await nombreClinica(prof.clinicaId),
+    }), 'el aviso de vinculación');
 
     return res.status(201).json({
         message: 'Paciente registrado con éxito',
         id_paciente: paciente.id,
-        cuenta: { estado: 'vinculada', mailEnviado },
+        cuenta: { estado: 'vinculada', mailEnCurso: true },
     });
 }
 
@@ -554,7 +555,7 @@ exports.saveDataPacient = async (req, res) => {
         });
         if (!cod.ok) return res.status(400).json({ error: cod.error });
 
-        const prof = await getProfContext(db, req.session);
+        const prof = await getProfContext(req);
         const idRegistro = await insertRegistro(db, paciente.id, prof, req.body, cod);
 
         await registrarAcceso(req, {
@@ -665,7 +666,7 @@ exports.getEmisor = async (req, res) => {
         const db = await getUserSupabase(req);
         if (!db) return res.status(ERR_SESION.status).json(ERR_SESION.body);
 
-        const prof = await getProfContext(db, req.session);
+        const prof = await getProfContext(req);
 
         let matricula = '';
         if (prof.idProfesional) {
