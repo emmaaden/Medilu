@@ -11,7 +11,7 @@ LUCIDE = FRONT / "node_modules/lucide-react/dist/esm/icons"
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 HANDLE = "@medilu.app"
-WHATSAPP = "261 593-0274"
+WHATSAPP = "261 772-5639"
 DIAS_PRUEBA = 14
 
 # Tokens de color de la app (frontend/src/index.css)
@@ -37,6 +37,12 @@ def icon(name, cls="ic"):
     assert parts, f"ícono vacío: {name}"
     return (f'<svg class="{cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
             f'stroke-linecap="round" stroke-linejoin="round">{"".join(parts)}</svg>')
+
+
+def whatsapp(cls="ic"):
+    """Logo de WhatsApp (Font Awesome Free, whatsapp.svg) en el color del texto."""
+    svg = (ROOT / "whatsapp.svg").read_text(encoding="utf-8")
+    return svg.replace("<svg ", f'<svg class="{cls}" fill="currentColor" ', 1)
 
 
 # Isotipo «Turno» (fuente de verdad: AgendaSalud-Branding/logo/agenda-salud-isotipo.svg)

@@ -58,7 +58,7 @@ mes**, y aprender qué porcentaje contrata antes de poner plata en anuncios.
    - **Historias destacadas** (ver §5): son el «cómo contratar» permanente.
    - Ritmo: 3 posts por semana + historias diarias de lunes a viernes.
    - CTA único en todas las piezas: **comentá PRUEBA** o **escribinos por WhatsApp**.
-2. **WhatsApp de soporte (261 593-0274)** — donde se cierra la venta: respuesta en el día,
+2. **WhatsApp de soporte (261 772-5639)** — donde se cierra la venta: respuesta en el día,
    guía para crear la cuenta y para contratar el plan.
 3. **Contacto directo con odontología en Mendoza** — círculo/colegio odontológico, grupos de
    egresados, proveedores dentales. Ofrecer una demo de 15 minutos por videollamada.

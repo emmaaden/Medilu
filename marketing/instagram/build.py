@@ -13,7 +13,7 @@ import pathlib, subprocess, html, sys
 
 ROOT = pathlib.Path(__file__).parent
 sys.path.insert(0, str(ROOT.parent))
-from marca import CHROME, FONT_FACE, TOKENS, HANDLE, WHATSAPP, DIAS_PRUEBA, ISOTIPO, icon, iso  # noqa: E402
+from marca import CHROME, FONT_FACE, TOKENS, HANDLE, WHATSAPP, DIAS_PRUEBA, ISOTIPO, icon, iso, whatsapp  # noqa: E402
 
 # --- Datos del negocio (verificados contra la tabla `plan` de producción, 2026-10-17) ---
 PAGO_ONLINE = False  # True cuando Mercado Pago esté activo en producción
@@ -244,7 +244,7 @@ contratar = [
      '<li>10 días para arrepentirte sin costo</li><li>Das de baja cuando quieras</li>'
      '<li>Si no contratás, tus datos no se borran: quedan en solo lectura y los exportás</li></ul>', False),
     ('<h2>¿Te ayudamos a arrancar?</h2><p>Escribinos y te guiamos paso a paso.</p>'
-     f'<div class="wa">{icon("message-circle")} {WHATSAPP}</div>'
+     f'<div class="wa">{whatsapp()} {WHATSAPP}</div>'
      '<p>O comentá <span class="kw">PRUEBA</span> en cualquier post.</p>', True),
 ]
 
@@ -303,7 +303,7 @@ preguntas = [
     ('<div class="q">¿Mis datos están seguros?</div><h2>Cada uno ve solo lo suyo.</h2><p>Profesional, recepción y paciente acceden solo a lo que les corresponde. '
      'En el plan Clínica, además, queda registrado quién vio cada historia.</p>', False),
     ('<h2>¿Otra pregunta?</h2><p>Escribinos, te responde una persona.</p>'
-     f'<div class="wa">{icon("message-circle")} {WHATSAPP}</div>', True),
+     f'<div class="wa">{whatsapp()} {WHATSAPP}</div>', True),
 ]
 
 portadas = {

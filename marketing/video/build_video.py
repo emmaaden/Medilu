@@ -17,7 +17,7 @@ from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).parent
 sys.path.insert(0, str(ROOT.parent))
-from marca import FONT_FACE, TOKENS, WHATSAPP, HANDLE, DIAS_PRUEBA, icon, iso  # noqa: E402
+from marca import FONT_FACE, TOKENS, WHATSAPP, HANDLE, DIAS_PRUEBA, icon, iso, whatsapp  # noqa: E402
 
 VOZ = "es-AR-ElenaNeural"  # alternativa masculina: es-AR-TomasNeural
 VELOCIDAD = "+10%"
@@ -68,7 +68,7 @@ ESCENAS = [
         <div class="mess">
           <div class="a drop card mcard" style="--d:{c[0]}s;--r:-4deg">{icon("notebook-pen")}<b>La agenda</b><span>en un cuaderno</span></div>
           <div class="a drop card mcard" style="--d:{c[1]}s;--r:3deg">{icon("archive")}<b>Las fichas</b><span>en un cajón</span></div>
-          <div class="a drop card mcard" style="--d:{c[2]}s;--r:-2deg">{icon("message-circle")}<b>Los turnos</b><span>en tu WhatsApp</span></div>
+          <div class="a drop card mcard" style="--d:{c[2]}s;--r:-2deg">{whatsapp()}<b>Los turnos</b><span>en tu WhatsApp</span></div>
         </div>"""),
 
     dict(dark=True, vo=[C("Con Medilu,"), C("tu consultorio entero entra en una app.")], html=lambda c: f"""
@@ -163,7 +163,7 @@ ESCENAS = [
                         C("Medilu: tu consultorio entero, en una app.")], html=lambda c: f"""
         <div class="a pop" style="--d:0s">{iso("hero-iso sm", True)}</div>
         <h2 class="a rise center" style="--d:{c[0]}s">Probalo {DIAS_PRUEBA} días gratis</h2>
-        <div class="a pop wa" style="--d:{c[1] + .3}s">{icon("message-circle")} {WHATSAPP}</div>
+        <div class="a pop wa" style="--d:{c[1] + .3}s">{whatsapp()} {WHATSAPP}</div>
         <div class="a rise wordmark sm" style="--d:{c[2]}s">Medi<span>lu</span></div>
         <p class="a rise center" style="--d:{c[2] + .5}s">{HANDLE} · link en la bio</p>"""),
 ]
