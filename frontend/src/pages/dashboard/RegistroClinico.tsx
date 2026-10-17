@@ -72,6 +72,7 @@ type View = "menu" | "registrar" | "buscar"
 
 const emptyForm = {
   nombre: "",
+  apellido: "",
   dni: "",
   telefono: "",
   email: "",
@@ -401,7 +402,7 @@ function RegistrarPaciente({
       void guardarConsultaExistente()
       return
     }
-    const req = ["nombre", "dni", "telefono", "sexo", "direccion", "fechaNacimiento"] as const
+    const req = ["nombre", "apellido", "dni", "telefono", "sexo", "direccion", "fechaNacimiento"] as const
     if (req.some((k) => !form[k]) || !cobertura.idObraSocial) {
       toast.warning("Completá los datos personales obligatorios.")
       return
@@ -426,7 +427,8 @@ function RegistrarPaciente({
     setSaving(true)
     try {
       const r = await api.post<{ cuenta?: CuentaPaciente }>("/pacient/regis-pacient", {
-        fullName: form.nombre,
+        nombre: form.nombre.trim(),
+        apellido: form.apellido.trim(),
         dni: form.dni,
         telefono: form.telefono,
         email: form.email.trim(),
@@ -533,8 +535,11 @@ function RegistrarPaciente({
               </div>
             ) : (
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <Field label="Nombre y apellido" htmlFor="nombre" required>
+                <Field label="Nombre" htmlFor="nombre" required>
                   <Input id="nombre" className="h-10" value={form.nombre} onChange={set("nombre")} />
+                </Field>
+                <Field label="Apellido" htmlFor="apellido" required>
+                  <Input id="apellido" className="h-10" value={form.apellido} onChange={set("apellido")} />
                 </Field>
                 <Field label="DNI" htmlFor="dni" required>
                   <Input

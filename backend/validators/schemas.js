@@ -174,7 +174,11 @@ module.exports = {
 
     pacient: {
         regis: z.object({
-            fullName: nombre,
+            // Nombre y apellido por separado; `fullName` (todo junto) queda por
+            // compatibilidad con las páginas viejas de backend/public y el seed.
+            nombre: nombre.optional(),
+            apellido: nombre.optional(),
+            fullName: nombre.optional(),
             dni,
             email: emailOpcional,
             telefono: z.string().max(30).optional(),
@@ -188,7 +192,7 @@ module.exports = {
             tratamiento: textoOpcional,
             dientes: z.array(dienteSchema).optional(),
             ...codificacion,
-        }),
+        }).refine((d) => d.nombre || d.fullName, { message: 'Nombre requerido', path: ['nombre'] }),
         saveData: z.object({
             dni,
             sintomas: textoOpcional,
