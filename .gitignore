@@ -24,6 +24,9 @@ whisper/models/
 whisper/muestras/
 whisper/mediciones/
 
+# Salida del seed de datos de prueba (cuentas con contraseñas, mails, logs)
+backend/db/seed/salida/
+
 # Otros entornos (p. ej. backend/.env.produccion con las credenciales de prod)
 .env.*
 !.env.example
