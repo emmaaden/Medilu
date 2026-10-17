@@ -88,7 +88,7 @@ function handleFormSubmit(event) {
                   icon: "error",
                   title: "Oops...",
                   text: "Turno no agendado",
-                  footer: '<a href="https://wa.me/2615930274">Ayuda</a>'
+                  footer: '<a href="https://wa.me/2617725639">Ayuda</a>'
                 });
             }
         })
@@ -100,7 +100,7 @@ function handleFormSubmit(event) {
               icon: "error",
               title: "Oops...",
               text: `Turno no agendado: ${e.message}`,
-              footer: '<a href="https://wa.me/2615930274">Ayuda</a>'
+              footer: '<a href="https://wa.me/2617725639">Ayuda</a>'
             });
         });
       } catch (e) {
@@ -108,7 +108,7 @@ function handleFormSubmit(event) {
           icon: "error",
           title: "Oops...",
           text: `Turno no agendado: ${e.message}`,
-          footer: '<a href="https://wa.me/2615930274">Ayuda</a>'
+          footer: '<a href="https://wa.me/2617725639">Ayuda</a>'
         });
       }
 }
@@ -186,7 +186,7 @@ async function updateAvailableSlots() {
             icon: "error",
             title: "Oops...",
             text: `Error de sistema, le pedimos disculpas.`,
-            footer: '<a href="https://wa.me/2615930274">Ayuda</a>'
+            footer: '<a href="https://wa.me/2617725639">Ayuda</a>'
         });
     }
 }
@@ -257,7 +257,7 @@ document.getElementById('searchAppointmentForm').addEventListener('submit', func
                 icon: "error",
                 title: "Oops...",
                 text: `Error de sistema, le pedimos disculpas.`,
-                footer: '<a href="https://wa.me/2615930274">Ayuda</a>'
+                footer: '<a href="https://wa.me/2617725639">Ayuda</a>'
               });
         });
 });
@@ -283,7 +283,7 @@ function deleteAppointment(eventId) {
                 icon: "error",
                 title: "Oops...",
                 text: `Error de sistema, le pedimos disculpas.`,
-                footer: '<a href="https://wa.me/2615930274">Ayuda</a>'
+                footer: '<a href="https://wa.me/2617725639">Ayuda</a>'
               });
         });
 }
