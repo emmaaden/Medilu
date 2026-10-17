@@ -26,6 +26,7 @@ const columns = [
       { to: "/login", label: "Iniciar sesión" },
       { to: "/register/paciente", label: "Registro de paciente" },
       { to: "/register/profesional", label: "Registro profesional" },
+      { to: "/reportar-suplantacion", label: "Reportar suplantación de identidad" },
     ],
   },
   {

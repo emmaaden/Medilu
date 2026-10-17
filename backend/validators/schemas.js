@@ -372,6 +372,16 @@ module.exports = {
             // Fase M: el admin con sesión puede dar de baja el débito en el acto.
             cancelarDebito: z.boolean().optional(),
         }),
+        reporteSuplantacion: z.object({
+            nombre: z.string().trim().min(2, 'Ingresá tu nombre').max(120, 'Nombre demasiado largo'),
+            apellido: z.string().trim().min(2, 'Ingresá tu apellido').max(120, 'Apellido demasiado largo'),
+            dni,
+            email: z.email('Email inválido'),
+            telefono: z.string().trim().max(30, 'Teléfono demasiado largo').optional(),
+            situacion: z.enum(['cuenta', 'historia', 'turnos', 'otra'], 'Elegí qué pasó'),
+            clinica: z.string().trim().max(120, 'Texto demasiado largo').optional(),
+            detalle: z.string().trim().min(10, 'Contanos qué pasó').max(2000, 'Texto demasiado largo'),
+        }),
     },
 
     autorizacion: {

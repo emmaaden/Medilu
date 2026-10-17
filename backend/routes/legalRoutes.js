@@ -15,6 +15,15 @@ router.post(
     validate(schemas.legal.solicitudConsumo),
     legalController.solicitudConsumo
 );
+// Reporte de suplantación de identidad: también público (quien lo sufre puede no
+// tener cuenta, o tenerla tomada por otro).
+const reporteLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
+router.post(
+    '/api/reportes-suplantacion',
+    reporteLimiter,
+    validate(schemas.legal.reporteSuplantacion),
+    legalController.reporteSuplantacion
+);
 router.get('/robots.txt', legalController.robots);
 router.get('/sitemap.xml', legalController.sitemap);
 

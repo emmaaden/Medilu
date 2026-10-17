@@ -22,9 +22,10 @@ function baseUrl(req) {
     return (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
 }
 
-// Código legible e irrepetible en la práctica: ARR-20261006-7K3QXZ / BAJ-...
+// Código legible e irrepetible en la práctica: ARR-20261006-7K3QXZ / BAJ-... / SUP-...
+const PREFIJOS = { arrepentimiento: 'ARR', baja: 'BAJ', suplantacion: 'SUP' };
 function generarCodigo(tipo) {
-    const prefijo = tipo === 'baja' ? 'BAJ' : 'ARR';
+    const prefijo = PREFIJOS[tipo];
     const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const azar = crypto.randomBytes(4).toString('hex').toUpperCase().slice(0, 6);
     return `${prefijo}-${fecha}-${azar}`;
@@ -158,6 +159,86 @@ exports.solicitudConsumo = async (req, res) => {
     });
 };
 
+const SITUACIONES = {
+    cuenta: 'Alguien creó o usa una cuenta con mis datos',
+    historia: 'Alguien accedió o vinculó mi historia clínica',
+    turnos: 'Sacaron turnos a mi nombre',
+    otra: 'Otra situación',
+};
+
+// POST /api/reportes-suplantacion
+// Mismo circuito que la solicitud de consumo: el código sale SIEMPRE en pantalla, se
+// avisa al titular del sitio y se le manda el acuse a quien reporta. Si el mailer no
+// está configurado, `notificado` = false y el frontend ofrece mandarlo por email.
+// No bloquea nada solo: el equipo revisa el caso (bitácora hc_acceso, persona.id_auth).
+exports.reporteSuplantacion = async (req, res) => {
+    const { nombre, apellido, dni, email, telefono, situacion, clinica, detalle } = req.body;
+    const codigo = generarCodigo('suplantacion');
+    const titulo = 'Reporte de suplantación de identidad';
+    const nombreCompleto = `${nombre} ${apellido}`;
+    const fecha = new Date().toLocaleString('es-AR', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        dateStyle: 'full',
+        timeStyle: 'short',
+    });
+
+    const filas = [
+        { etiqueta: 'Código', valor: codigo, mono: true },
+        { etiqueta: 'Fecha', valor: `${fecha} hs` },
+        { etiqueta: 'Nombre', valor: nombreCompleto },
+        { etiqueta: 'DNI', valor: dni },
+        { etiqueta: 'Email', valor: email },
+        { etiqueta: 'Teléfono', valor: telefono || '—' },
+        { etiqueta: 'Qué pasó', valor: SITUACIONES[situacion] },
+        { etiqueta: 'Clínica o profesional', valor: clinica || '—' },
+        { etiqueta: 'Detalle', valor: detalle },
+    ];
+    const resumenTxt = [titulo, ...filas.map((f) => `${f.etiqueta}: ${f.valor}`)].join('\n');
+
+    const destinoTitular = process.env.LEGAL_NOTIFY_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_USER;
+    let notificado = false;
+    try {
+        if (destinoTitular) {
+            notificado = await sendMail({
+                to: destinoTitular,
+                subject: `[${codigo}] ${titulo}`,
+                text: `${resumenTxt}\n\nRevisar la cuenta y los accesos a la historia clínica de ese DNI.`,
+                html: layoutMail({
+                    titulo,
+                    resumen: `${codigo} · ${nombreCompleto} · DNI ${dni}`,
+                    cuerpo: [
+                        parrafo('Nuevo reporte de suplantación de identidad recibido desde el sitio.'),
+                        datos(filas),
+                        aviso('Qué revisar', 'Las cuentas atadas a ese DNI (persona.id_auth) y la bitácora de accesos a su historia clínica.'),
+                    ].join('\n'),
+                }),
+            });
+        }
+        if (notificado) {
+            await sendMail({
+                to: email,
+                subject: `Recibimos tu reporte (${codigo}) - Medilu`,
+                text: `Hola ${nombre},\n\nRecibimos tu reporte de suplantación de identidad.\nTu código es ${codigo}. Guardalo para cualquier consulta.\n\n${resumenTxt}\n\nMedilu`,
+                html: layoutMail({
+                    titulo: 'Recibimos tu reporte',
+                    resumen: `Tu código es ${codigo}.`,
+                    cuerpo: [
+                        parrafo(`Hola ${esc(nombre)}, recibimos tu reporte de suplantación de identidad. Tu código es ${fuerte(codigo)}.`),
+                        datos(filas),
+                        nota('Vamos a revisar el caso y te escribimos a este email. Guardá el código para cualquier consulta.'),
+                    ].join('\n'),
+                }),
+            });
+        }
+    } catch (err) {
+        console.error('Reporte de suplantación: fallo enviando email:', err.message);
+        notificado = false;
+    }
+
+    console.log(`Reporte de suplantación ${codigo} registrado. Notificado: ${notificado}`);
+    res.json({ codigo, notificado });
+};
+
 // Rutas públicas e indexables del SPA. Las privadas (panel, cuenta del paciente,
 // gestión de turnos por token, reset de contraseña) quedan fuera y bloqueadas en robots.
 const RUTAS_PUBLICAS = [
@@ -174,6 +255,7 @@ const RUTAS_PUBLICAS = [
     { path: '/reembolsos', changefreq: 'yearly', priority: '0.3' },
     { path: '/arrepentimiento', changefreq: 'yearly', priority: '0.3' },
     { path: '/baja', changefreq: 'yearly', priority: '0.3' },
+    { path: '/reportar-suplantacion', changefreq: 'yearly', priority: '0.3' },
     { path: '/accesibilidad', changefreq: 'yearly', priority: '0.3' },
 ];
 
