@@ -42,13 +42,17 @@ function maxFecha(...fechas) {
 }
 
 // Monto por ciclo. El anual aplica a los extras el mismo descuento que al plan.
-function calcularMonto(plan, ciclo, extras) {
+// `descuentoPct` (Fase X): descuento manual de la clínica, sobre el total.
+function calcularMonto(plan, ciclo, extras, descuentoPct = 0) {
     const extraMensual = plan.precioProfesionalExtra == null ? 0 : extras * plan.precioProfesionalExtra;
+    let total;
     if (ciclo === 'anual') {
         const factor = plan.precioMensual > 0 ? plan.precioAnual / plan.precioMensual : 12;
-        return Math.round(plan.precioAnual + extraMensual * factor);
+        total = plan.precioAnual + extraMensual * factor;
+    } else {
+        total = plan.precioMensual + extraMensual;
     }
-    return Math.round(plan.precioMensual + extraMensual);
+    return Math.round(total * (100 - (descuentoPct || 0)) / 100);
 }
 
 // Día del primer débito de una contratación nueva: cuando termina lo que la clínica
@@ -109,13 +113,13 @@ async function iniciarContratacion({ clinicaId, clinicaNombre, personaId, planId
     if (!plan || !plan.activo) throw new ErrorNegocio(400, 'El plan elegido no existe.');
     const extras = plan.precioProfesionalExtra == null ? 0 : (profesionalesExtra || 0);
     await verificarQueEntra(clinicaId, plan, extras);
-    const monto = calcularMonto(plan, ciclo, extras);
+    const sus = await filaSuscripcion(clinicaId);
+    const monto = calcularMonto(plan, ciclo, extras, planes.descuentoVigente(sus));
 
     // Débito vigente con el mismo ciclo y el plan AL DÍA: se cambia el monto y el plan
     // rige ya (sin prorrateo: el nuevo monto se cobra desde el próximo débito).
     // Con el pago atrasado (gracia/vencida) no: el débito actual está fallando, así que
     // se pasa por el checkout para pagar con otro medio (y se cancela el anterior).
-    const sus = await filaSuscripcion(clinicaId);
     if (puedeCambiarSinCheckout(sus, ciclo)) {
         await mp.cambiarMonto(sus.mp_preapproval_id, monto);
         const { error } = await supabase.from('suscripcion').update({
@@ -124,6 +128,8 @@ async function iniciarContratacion({ clinicaId, clinicaNombre, personaId, planId
         }).eq('clinica_id', clinicaId);
         if (error) throw error;
         planes.invalidar(clinicaId);
+        // Un descuento con fecha de fin deja programado el precio pleno (Fase X).
+        if (sus.descuento_hasta) await ajustarDescuento(clinicaId);
         return { aplicado: true, monto };
     }
 
@@ -355,14 +361,20 @@ async function programarActualizacionPrecios(planId, dias = DIAS_AVISO_PRECIO) {
     if (!plan) throw new ErrorNegocio(404, 'Plan no encontrado.');
     if (dias < DIAS_AVISO_PRECIO) throw new ErrorNegocio(400, `El aviso tiene que ser de al menos ${DIAS_AVISO_PRECIO} días.`);
     const { data: subs, error } = await supabase.from('suscripcion')
-        .select('clinica_id, ciclo, profesionales_extra, monto, monto_nuevo')
+        .select('clinica_id, ciclo, profesionales_extra, monto, monto_nuevo, descuento_pct, descuento_hasta')
         .eq('plan_id', planId).eq('mp_estado', 'authorized');
     if (error) throw error;
 
     const desde = new Date(Date.now() + dias * DIA_MS).toISOString();
     let programadas = 0;
     for (const s of subs || []) {
-        const nuevo = calcularMonto(plan, s.ciclo, s.profesionales_extra || 0);
+        // Descuento con fecha de fin: lo que rige después lo decide ajustarDescuento.
+        if (planes.descuentoVigente(s) && s.descuento_hasta) {
+            const r = await ajustarDescuento(s.clinica_id);
+            if (r.programado) programadas++;
+            continue;
+        }
+        const nuevo = calcularMonto(plan, s.ciclo, s.profesionales_extra || 0, planes.descuentoVigente(s));
         const actual = s.monto == null ? null : Number(s.monto);
         if (nuevo === actual) continue; // ya cobra el precio vigente
         if (s.monto_nuevo != null && Number(s.monto_nuevo) === nuevo) continue; // ya programado
@@ -469,6 +481,82 @@ async function aplicarCambiosDePrecio() {
     return { aplicados };
 }
 
+// ---------------------------------------------------------------------------
+// Descuento manual en un débito vigente (Fase X)
+// ---------------------------------------------------------------------------
+// Bajar el monto rige ya (desde el próximo débito). Subirlo —se quitó o achicó el
+// descuento, o vence— se programa con el aviso de DIAS_AVISO_PRECIO días de la Fase
+// M2, así que un descuento que vence antes de eso se estira hasta la fecha del aviso.
+// Idempotente: el control diario lo corre para los descuentos con fecha de fin.
+async function ajustarDescuento(clinicaId) {
+    const sus = await filaSuscripcion(clinicaId);
+    if (!sus || sus.mp_estado !== 'authorized' || !sus.mp_preapproval_id) return { aplicado: false, programado: false };
+    const plan = (await planes.getPlanes()).get(sus.plan_id);
+    if (!plan) return { aplicado: false, programado: false };
+
+    const extras = plan.precioProfesionalExtra == null ? 0 : (sus.profesionales_extra || 0);
+    const pct = planes.descuentoVigente(sus);
+    const conDescuento = calcularMonto(plan, sus.ciclo, extras, pct);
+    const pleno = calcularMonto(plan, sus.ciclo, extras, 0);
+    const patch = { actualizada_en: new Date().toISOString() };
+
+    let monto = sus.monto == null ? null : Number(sus.monto);
+    let aplicado = false;
+    if (monto == null || conDescuento < monto) {
+        await mp.cambiarMonto(sus.mp_preapproval_id, conDescuento);
+        monto = conDescuento;
+        patch.monto = monto;
+        aplicado = true;
+    }
+
+    // Lo que se cobra después: el precio pleno al vencer el descuento, o el actual.
+    const finDescuento = !!(pct && sus.descuento_hasta);
+    const destino = finDescuento ? pleno : conDescuento;
+    let programado = false;
+    if (destino === monto) {
+        Object.assign(patch, { monto_nuevo: null, monto_nuevo_desde: null, aviso_precio_enviado_en: null });
+    } else {
+        const minimo = new Date(Date.now() + DIAS_AVISO_PRECIO * DIA_MS);
+        const desde = finDescuento ? maxFecha(sus.descuento_hasta, minimo) : minimo;
+        const mismoValor = sus.monto_nuevo != null && Number(sus.monto_nuevo) === destino;
+        // Ya programado: se respeta (y su aviso), salvo que se haya movido la fecha de fin.
+        // Programado después del fin solo vale si el fin cae dentro de los días de aviso.
+        const finMs = finDescuento ? new Date(sus.descuento_hasta).getTime() : 0;
+        const actualMs = sus.monto_nuevo_desde ? new Date(sus.monto_nuevo_desde).getTime() : 0;
+        const mismaFecha = !finDescuento
+            || (actualMs >= finMs && (actualMs <= finMs + DIA_MS || finMs < minimo.getTime()));
+        if (!(mismoValor && mismaFecha)) {
+            Object.assign(patch, {
+                monto_nuevo: destino, monto_nuevo_desde: desde.toISOString(), aviso_precio_enviado_en: null,
+            });
+            programado = true;
+        }
+    }
+
+    const { error } = await supabase.from('suscripcion').update(patch).eq('clinica_id', clinicaId);
+    if (error) throw error;
+    planes.invalidar(clinicaId);
+    if (programado) await enviarAvisosPrecio();
+    return { aplicado, programado, monto };
+}
+
+// Control diario: descuentos con fecha de fin en débitos vigentes (Fase X).
+async function revisarDescuentos() {
+    const { data, error } = await supabase.from('suscripcion').select('clinica_id')
+        .eq('mp_estado', 'authorized').not('descuento_hasta', 'is', null);
+    if (error) throw error;
+    let ajustados = 0;
+    for (const s of data || []) {
+        try {
+            const r = await ajustarDescuento(s.clinica_id);
+            if (r.aplicado || r.programado) ajustados++;
+        } catch (e) {
+            console.error('[descuentos] no se pudo ajustar', s.clinica_id, e.message);
+        }
+    }
+    return { ajustados };
+}
+
 module.exports = {
     ErrorNegocio,
     DIAS_AVISO_PRECIO,
@@ -478,6 +566,8 @@ module.exports = {
     programarActualizacionPrecios,
     enviarAvisosPrecio,
     aplicarCambiosDePrecio,
+    ajustarDescuento,
+    revisarDescuentos,
     iniciarContratacion,
     procesarCobro,
     sincronizarSuscripcion,

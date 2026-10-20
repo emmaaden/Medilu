@@ -56,6 +56,10 @@ exports.listarClinicas = async (req, res) => {
                     montoNuevo: s.monto_nuevo == null ? null : Number(s.monto_nuevo),
                     montoNuevoDesde: s.monto_nuevo_desde,
                     avisoPrecioEnviadoEn: s.aviso_precio_enviado_en,
+                    // Fase X: descuento manual (null = ninguno).
+                    descuentoPct: s.descuento_pct,
+                    descuentoHasta: s.descuento_hasta,
+                    descuentoVigente: planes.descuentoVigente(s),
                 },
                 uso: uso.get(c.id) || { profesionales: 0, recepcion: 0, auditores: 0 },
             };
@@ -82,7 +86,7 @@ function fechaONull(v) {
 exports.actualizarSuscripcion = async (req, res) => {
     try {
         const clinicaId = req.params.id;
-        const { planId, estado, ciclo, profesionalesExtra, pruebaHasta, periodoHasta, notas } = req.body;
+        const { planId, estado, ciclo, profesionalesExtra, pruebaHasta, periodoHasta, notas, descuentoPct, descuentoHasta } = req.body;
 
         const { data: cli, error: cliErr } = await supabase
             .from('clinica').select('id').eq('id', clinicaId).maybeSingle();
@@ -99,7 +103,17 @@ exports.actualizarSuscripcion = async (req, res) => {
         if (ciclo !== undefined) patch.ciclo = ciclo;
         if (profesionalesExtra !== undefined) patch.profesionales_extra = profesionalesExtra;
         if (notas !== undefined) patch.notas = notas || null;
+        // Fase X: descuento manual. null / 0 = sin descuento.
+        if (descuentoPct !== undefined) {
+            const pct = descuentoPct === null || descuentoPct === '' ? 0 : Number(descuentoPct);
+            if (!Number.isInteger(pct) || pct < 0 || pct > 99) {
+                return res.status(400).json({ error: 'El descuento tiene que ser un porcentaje entero entre 1 y 99.' });
+            }
+            patch.descuento_pct = pct || null;
+            if (!pct) patch.descuento_hasta = null;
+        }
         const fechas = [['pruebaHasta', 'prueba_hasta', pruebaHasta], ['periodoHasta', 'periodo_hasta', periodoHasta]];
+        if (patch.descuento_pct) fechas.push(['descuentoHasta', 'descuento_hasta', descuentoHasta]);
         for (const [campo, col, valor] of fechas) {
             if (valor === undefined) continue;
             const f = fechaONull(valor);
@@ -119,7 +133,20 @@ exports.actualizarSuscripcion = async (req, res) => {
         if (error) return errorDb(res, error);
 
         planes.invalidar(clinicaId);
-        return res.json({ message: 'Suscripción actualizada', estado: planes.calcularEstado(data) });
+
+        // Con débito de Mercado Pago, el descuento se lleva al monto que se cobra.
+        let descuento = null;
+        if ((descuentoPct !== undefined || descuentoHasta !== undefined) && mp.configurado()) {
+            try {
+                descuento = await suscripcionMp.ajustarDescuento(clinicaId);
+            } catch (e) {
+                console.error('Error ajustando el descuento en MP:', e);
+                return res.status(502).json({
+                    error: 'Se guardó el descuento, pero no se pudo cambiar el monto en Mercado Pago. Probá de nuevo.',
+                });
+            }
+        }
+        return res.json({ message: 'Suscripción actualizada', estado: planes.calcularEstado(data), descuento });
     } catch (err) {
         console.error('Error en plataforma/suscripcion:', err);
         return res.status(500).json({ error: 'No se pudo actualizar la suscripción.' });

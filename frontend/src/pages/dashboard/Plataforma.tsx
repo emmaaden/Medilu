@@ -28,7 +28,7 @@ import { Container } from "@/components/site/Section"
 import { SelectField } from "@/components/form/SelectField"
 import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
-import { ESTADO_LABEL, formatoPesos, type EstadoPlan, type Plan } from "@/lib/planes"
+import { ESTADO_LABEL, formatoPesos, montoPlan, type EstadoPlan, type Plan } from "@/lib/planes"
 
 type Suscripcion = {
   planId: string
@@ -48,6 +48,10 @@ type Suscripcion = {
   montoNuevo: number | null
   montoNuevoDesde: string | null
   avisoPrecioEnviadoEn: string | null
+  // Fase X: descuento manual (pct null = ninguno; vigente 0 = vencido o ninguno).
+  descuentoPct: number | null
+  descuentoHasta: string | null
+  descuentoVigente: number
 }
 
 const MP_LABEL: Record<string, string> = {
@@ -77,6 +81,8 @@ type FormSub = {
   pruebaHasta: string
   periodoHasta: string
   notas: string
+  descuentoPct: string
+  descuentoHasta: string
 }
 
 const ESTADOS_GUARDADOS = [
@@ -152,6 +158,8 @@ export default function Plataforma() {
       pruebaHasta: aInputFecha(s?.pruebaHasta ?? null),
       periodoHasta: aInputFecha(s?.periodoHasta ?? null),
       notas: s?.notas ?? "",
+      descuentoPct: s?.descuentoPct ? String(s.descuentoPct) : "",
+      descuentoHasta: aInputFecha(s?.descuentoHasta ?? null),
     })
   }
 
@@ -173,9 +181,16 @@ export default function Plataforma() {
       toast.error("Los profesionales extra tienen que ser un número entero.")
       return
     }
+    const pct = form.descuentoPct.trim() === "" ? 0 : Number(form.descuentoPct)
+    if (!Number.isInteger(pct) || pct < 0 || pct > 99) {
+      toast.error("El descuento tiene que ser un porcentaje entero entre 1 y 99 (vacío = sin descuento).")
+      return
+    }
     setGuardando(true)
     try {
-      await api.patch(`/plataforma/clinicas/${editando.id}/suscripcion`, {
+      const r = await api.patch<{ descuento: { aplicado: boolean; programado: boolean } | null }>(
+        `/plataforma/clinicas/${editando.id}/suscripcion`,
+        {
         planId: form.planId,
         estado: form.estado,
         ciclo: form.ciclo,
@@ -183,8 +198,17 @@ export default function Plataforma() {
         pruebaHasta: deInputFecha(form.pruebaHasta),
         periodoHasta: deInputFecha(form.periodoHasta),
         notas: form.notas.trim() || null,
-      })
-      toast.success("Suscripción actualizada.")
+        descuentoPct: pct || null,
+        descuentoHasta: pct ? deInputFecha(form.descuentoHasta) : null,
+        }
+      )
+      toast.success(
+        r.descuento?.aplicado
+          ? "Suscripción actualizada. El débito de Mercado Pago ya cobra el monto con descuento."
+          : r.descuento?.programado
+            ? "Suscripción actualizada. El nuevo monto del débito se avisa por email y rige en 30 días."
+            : "Suscripción actualizada."
+      )
       setEditando(null)
       cargar()
     } catch (e) {
@@ -276,7 +300,16 @@ export default function Plataforma() {
                         <p className="font-medium">{c.nombre}</p>
                         <p className="text-xs text-muted-foreground">{c.slug}</p>
                       </TableCell>
-                      <TableCell>{plan?.nombre ?? "—"}</TableCell>
+                      <TableCell>
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          {plan?.nombre ?? "—"}
+                          {s && s.descuentoVigente > 0 && (
+                            <Badge variant="secondary" title={s.descuentoHasta ? `Hasta el ${fechaCorta(s.descuentoHasta)}` : "Sin vencimiento"}>
+                              −{s.descuentoVigente} %
+                            </Badge>
+                          )}
+                        </span>
+                      </TableCell>
                       <TableCell>
                         {s ? (
                           <Badge variant={ESTADO_VARIANTE[s.estado]}>{ESTADO_LABEL[s.estado]}</Badge>
@@ -443,6 +476,7 @@ export default function Plataforma() {
               <p className="-mt-2 text-xs text-muted-foreground">
                 Sin «período pago hasta», un plan activo no vence (cuentas de cortesía).
               </p>
+              <DescuentoCampos form={form} setForm={setForm} plan={planElegido} />
               <div className="grid gap-1.5">
                 <Label htmlFor="sub-notas">Notas internas</Label>
                 <Textarea
@@ -467,6 +501,75 @@ export default function Plataforma() {
         </DialogContent>
       </Dialog>
     </Container>
+  )
+}
+
+/**
+ * Fase X: descuento manual de la clínica sobre su plan (lanzamiento, convenio). Muestra
+ * cuánto queda el monto por ciclo con el plan, el ciclo y los extras del formulario.
+ */
+function DescuentoCampos({
+  form,
+  setForm,
+  plan,
+}: {
+  form: FormSub
+  setForm: (f: FormSub) => void
+  plan: Plan | undefined
+}) {
+  const pct = Number(form.descuentoPct)
+  const valido = Number.isInteger(pct) && pct >= 1 && pct <= 99
+  const extras = plan?.precioProfesionalExtra != null ? Number(form.profesionalesExtra) || 0 : 0
+  const periodo = form.ciclo === "anual" ? "año" : "mes"
+  return (
+    <fieldset className="grid gap-3 rounded-lg border border-border p-3">
+      <legend className="px-1 text-sm font-medium">Descuento</legend>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-1.5">
+          <Label htmlFor="sub-descuento">Porcentaje</Label>
+          <div className="relative">
+            <Input
+              id="sub-descuento"
+              type="number"
+              min={1}
+              max={99}
+              inputMode="numeric"
+              className="pr-8"
+              placeholder="Sin descuento"
+              value={form.descuentoPct}
+              onChange={(e) => setForm({ ...form, descuentoPct: e.target.value })}
+            />
+            <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm text-muted-foreground">
+              %
+            </span>
+          </div>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="sub-descuento-hasta">Hasta (inclusive)</Label>
+          <Input
+            id="sub-descuento-hasta"
+            type="date"
+            value={form.descuentoHasta}
+            disabled={!valido}
+            onChange={(e) => setForm({ ...form, descuentoHasta: e.target.value })}
+          />
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {valido && plan ? (
+          <>
+            Queda en{" "}
+            <strong className="text-foreground">{formatoPesos(montoPlan(plan, form.ciclo, extras, pct))}</strong> por{" "}
+            {periodo} (lista {formatoPesos(montoPlan(plan, form.ciclo, extras))})
+            {form.descuentoHasta ? "" : ", sin vencimiento"}.{" "}
+          </>
+        ) : (
+          "Vacío = sin descuento. "
+        )}
+        Con débito de Mercado Pago, bajar el monto rige desde el próximo cobro; subirlo (al quitar el
+        descuento o al vencer) se avisa por email con 30 días.
+      </p>
+    </fieldset>
   )
 }
 

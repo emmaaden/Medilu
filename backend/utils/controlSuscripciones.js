@@ -3,6 +3,7 @@
 // ningún cambio de precio queda sin aplicar. Todo es idempotente: correrlo de más no
 // cambia el resultado.
 //
+//   0. Programa el fin de los descuentos con fecha (Fase X).
 //   1. Aplica los cambios de precio avisados cuya fecha llegó.
 //   2. Manda los avisos de precio pendientes (si el email está configurado).
 //   3. Sincroniza con MP los débitos activos con el período por vencer o vencido, o
@@ -18,8 +19,9 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 async function controlDiario() {
     if (!mp.configurado()) return { omitido: 'Mercado Pago no está configurado' };
     const ahora = Date.now();
-    const resultado = { precios: null, avisos: null, sincronizados: 0, errores: 0 };
+    const resultado = { descuentos: null, precios: null, avisos: null, sincronizados: 0, errores: 0 };
 
+    resultado.descuentos = await suscripcionMp.revisarDescuentos(); // Fase X
     resultado.precios = await suscripcionMp.aplicarCambiosDePrecio();
     resultado.avisos = await suscripcionMp.enviarAvisosPrecio();
 

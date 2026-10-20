@@ -418,6 +418,14 @@ module.exports = {
         }),
     },
 
+    // Fase N: listado público de clínicas para elegir dónde sacar turno.
+    publico: {
+        clinicas: z.object({
+            q: z.string().trim().max(80, 'Búsqueda demasiado larga').optional(),
+            page: paginaQuery,
+        }),
+    },
+
     // Fase L: panel de la plataforma (activación manual de planes y precios).
     plataforma: {
         suscripcion: z.object({
@@ -429,6 +437,9 @@ module.exports = {
             pruebaHasta: z.string().trim().max(40).nullable().optional(),
             periodoHasta: z.string().trim().max(40).nullable().optional(),
             notas: z.string().trim().max(2000).nullable().optional(),
+            // Fase X: descuento manual en %. null = sin descuento; hasta null = sin fin.
+            descuentoPct: z.number().int().min(1, 'El descuento va de 1 a 99 %').max(99, 'El descuento va de 1 a 99 %').nullable().optional(),
+            descuentoHasta: z.string().trim().max(40).nullable().optional(),
         }),
         plan: z.object({
             nombre: z.string().trim().min(1).max(60).optional(),
