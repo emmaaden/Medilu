@@ -11,6 +11,9 @@ import {
   Building2,
   LogIn,
   MapPin,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,6 +44,14 @@ type ClinicaPublica = {
   nombre: string
   direccion: string | null
   descripcion: string | null
+}
+
+/** Una página del listado público de clínicas (con el filtro aplicado). */
+type PaginaClinicas = {
+  clinicas: ClinicaPublica[]
+  total: number
+  page: number
+  pageSize: number
 }
 
 const mapsUrl = (direccion: string) =>
@@ -307,17 +318,46 @@ export default function Turnos() {
 /* Elegir clínica (Fase N)                                                    */
 /* -------------------------------------------------------------------------- */
 function ClinicaPicker({ onPick }: { onPick: (slug: string) => void }) {
-  const [clinicas, setClinicas] = useState<ClinicaPublica[] | null>(null)
+  const [q, setQ] = useState("")
+  const [page, setPage] = useState(1)
+  const [datos, setDatos] = useState<PaginaClinicas | null>(null)
+  const [cargando, setCargando] = useState(true)
 
+  // Búsqueda con un pequeño debounce; cambiar de página consulta enseguida.
   useEffect(() => {
-    api
-      .get<ClinicaPublica[]>("/clinica-publica/lista")
-      .then((d) => setClinicas(Array.isArray(d) ? d : []))
-      .catch(() => {
-        setClinicas([])
-        toast.error("No se pudieron cargar las clínicas")
-      })
-  }, [])
+    let vivo = true
+    setCargando(true)
+    const t = setTimeout(() => {
+      const params = new URLSearchParams({ page: String(page) })
+      if (q.trim()) params.set("q", q.trim())
+      api
+        .get<PaginaClinicas>(`/clinica-publica/lista?${params.toString()}`)
+        .then((d) => {
+          if (!vivo) return
+          setDatos(d)
+          // El backend ajusta la página si quedó fuera de rango.
+          if (d.page !== page) setPage(d.page)
+        })
+        .catch(() => {
+          if (!vivo) return
+          setDatos({ clinicas: [], total: 0, page: 1, pageSize: 8 })
+          toast.error("No se pudieron cargar las clínicas")
+        })
+        .finally(() => vivo && setCargando(false))
+    }, q ? 300 : 0)
+    return () => {
+      vivo = false
+      clearTimeout(t)
+    }
+  }, [q, page])
+
+  function buscar(texto: string) {
+    setQ(texto)
+    setPage(1)
+  }
+
+  const filtrando = q.trim() !== ""
+  const paginas = datos ? Math.max(1, Math.ceil(datos.total / datos.pageSize)) : 1
 
   return (
     <div>
@@ -326,18 +366,53 @@ function ClinicaPicker({ onPick }: { onPick: (slug: string) => void }) {
         Revisá dónde queda antes de reservar tu turno.
       </p>
 
-      {clinicas === null ? (
+      <div className="relative mt-5">
+        <Search
+          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden
+        />
+        <Input
+          type="search"
+          className="h-10 pl-9"
+          placeholder="Buscar por nombre, barrio o ciudad…"
+          aria-label="Buscar clínica por nombre o dirección"
+          value={q}
+          maxLength={80}
+          onChange={(e) => buscar(e.target.value)}
+        />
+      </div>
+
+      {datos === null ? (
         <div className="mt-5 grid gap-3">
           <Skeleton className="h-24 w-full rounded-xl" />
           <Skeleton className="h-24 w-full rounded-xl" />
         </div>
-      ) : clinicas.length === 0 ? (
-        <p className="mt-5 rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground" role="status">
-          No hay clínicas tomando turnos online por el momento.
-        </p>
+      ) : datos.clinicas.length === 0 ? (
+        <div
+          className="mt-5 rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground"
+          role="status"
+        >
+          {filtrando ? (
+            <>
+              No encontramos clínicas para «{q.trim()}».{" "}
+              <button
+                type="button"
+                className="font-medium text-primary underline-offset-4 hover:underline"
+                onClick={() => buscar("")}
+              >
+                Ver todas
+              </button>
+            </>
+          ) : (
+            "No hay clínicas tomando turnos online por el momento."
+          )}
+        </div>
       ) : (
-        <ul className="mt-5 grid gap-3">
-          {clinicas.map((c) => (
+        <ul
+          className={`mt-5 grid gap-3 transition-opacity ${cargando ? "opacity-60" : ""}`}
+          aria-busy={cargando}
+        >
+          {datos.clinicas.map((c) => (
             <li key={c.slug}>
               <button
                 type="button"
@@ -350,7 +425,7 @@ function ClinicaPicker({ onPick }: { onPick: (slug: string) => void }) {
                       <Building2 className="size-5" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-semibold">{c.nombre}</h3>
+                      <h3 className="font-semibold break-words">{c.nombre}</h3>
                       <p className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground">
                         <MapPin className="mt-0.5 size-4 shrink-0" />
                         <span className="min-w-0 break-words">
@@ -370,6 +445,35 @@ function ClinicaPicker({ onPick }: { onPick: (slug: string) => void }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {datos && datos.total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 text-sm text-muted-foreground">
+          <span aria-live="polite">
+            {datos.total} {datos.total === 1 ? "clínica" : "clínicas"}
+            {paginas > 1 && ` · página ${datos.page} de ${paginas}`}
+          </span>
+          {paginas > 1 && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={datos.page <= 1 || cargando}
+                onClick={() => setPage(datos.page - 1)}
+              >
+                <ChevronLeft /> Anterior
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={datos.page >= paginas || cargando}
+                onClick={() => setPage(datos.page + 1)}
+              >
+                Siguiente <ChevronRight />
+              </Button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

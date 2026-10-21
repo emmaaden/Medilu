@@ -1,7 +1,7 @@
 import { Check, Star } from "lucide-react"
 import { cn } from "cn"
 import { Badge } from "@/components/ui/badge"
-import { formatoPesos, mesesDeRegalo, type Plan } from "@/lib/planes"
+import { formatoPesos, mesesDeRegalo, montoPlan, type Plan } from "@/lib/planes"
 
 export type Ciclo = "mensual" | "anual"
 
@@ -34,6 +34,7 @@ export function PlanCard({
   ciclo,
   actual = false,
   recomendar = true,
+  descuentoPct = 0,
   accion,
 }: {
   plan: Plan
@@ -43,10 +44,13 @@ export function PlanCard({
   actual?: boolean
   /** Resaltar el plan destacado (en el panel se resalta solo el plan actual). */
   recomendar?: boolean
+  /** Descuento manual de la clínica (Fase X): se muestra el precio con descuento. */
+  descuentoPct?: number
   accion: React.ReactNode
 }) {
   const nuevas = plan.features.filter((f) => !anterior?.features.includes(f) && f !== "recepcion")
-  const precio = ciclo === "anual" ? plan.precioAnual : plan.precioMensual
+  const lista = ciclo === "anual" ? plan.precioAnual : plan.precioMensual
+  const precio = montoPlan(plan, ciclo, 0, descuentoPct)
   const regalo = mesesDeRegalo(plan)
   const recomendado = recomendar && plan.destacado && !actual
 
@@ -67,8 +71,17 @@ export function PlanCard({
         )
       )}
 
-      <h2 className="text-lg font-semibold">{plan.nombre}</h2>
-      <div className="mt-2 flex flex-wrap items-baseline gap-x-1">
+      <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
+        {plan.nombre}
+        {descuentoPct > 0 && <Badge variant="secondary">−{descuentoPct} %</Badge>}
+      </h2>
+      {descuentoPct > 0 && (
+        <p className="mt-2 text-sm text-muted-foreground tabular-nums">
+          <span className="sr-only">Precio de lista: </span>
+          <s>{formatoPesos(lista)}</s>
+        </p>
+      )}
+      <div className={cn("flex flex-wrap items-baseline gap-x-1", descuentoPct > 0 ? "mt-0.5" : "mt-2")}>
         <span className="text-4xl font-semibold tabular-nums">{formatoPesos(precio)}</span>
         <span className="text-sm text-muted-foreground">
           / {ciclo === "anual" ? "año" : "mes"}
@@ -77,7 +90,7 @@ export function PlanCard({
       </div>
       <p className="mt-1 min-h-5 text-xs text-muted-foreground">
         {ciclo === "anual"
-          ? `Equivale a ${formatoPesos(Math.round(plan.precioAnual / 12))} por mes${
+          ? `Equivale a ${formatoPesos(Math.round(precio / 12))} por mes${
               regalo > 0 ? ` · ${regalo} meses de regalo` : ""
             }`
           : ""}

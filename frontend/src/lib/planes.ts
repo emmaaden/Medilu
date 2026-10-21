@@ -96,6 +96,26 @@ export function formatoPesos(n: number) {
   return pesos.format(n)
 }
 
+/**
+ * Monto por ciclo (espejo de calcularMonto en backend/utils/suscripcionMp.js). El
+ * anual aplica a los extras el mismo descuento que al plan; `descuentoPct` es el
+ * descuento manual de la clínica (Fase X), sobre el total.
+ */
+export function montoPlan(p: Plan, ciclo: "mensual" | "anual", extras: number, descuentoPct = 0) {
+  const extraMensual = p.precioProfesionalExtra == null ? 0 : extras * p.precioProfesionalExtra
+  let total: number
+  if (ciclo === "anual") {
+    const factor = p.precioMensual > 0 ? p.precioAnual / p.precioMensual : 12
+    total = p.precioAnual + extraMensual * factor
+  } else {
+    total = p.precioMensual + extraMensual
+  }
+  return Math.round((total * (100 - descuentoPct)) / 100)
+}
+
+/** Descuento manual que rige para la clínica (Fase X). `hasta` null = sin fin. */
+export type Descuento = { pct: number; hasta: string | null }
+
 /** Ahorro de pagar el año contra 12 meses, redondeado a meses enteros. */
 export function mesesDeRegalo(p: Plan) {
   if (!p.precioMensual) return 0

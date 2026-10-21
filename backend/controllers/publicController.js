@@ -50,10 +50,16 @@ exports.clinicaPublica = async (req, res) => {
     }
 };
 
-// GET /clinica-publica/lista
+// Minúsculas y sin tildes, para buscar «clinica» y encontrar «Clínica».
+const normalizar = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const CLINICAS_POR_PAGINA = 8;
+
+// GET /clinica-publica/lista[?q=<texto>&page=<n>]
 // Fase N: clínicas donde el paciente puede sacar turno (activas, con slug y con la
 // suscripción vigente y con los turnos online prendidos), para elegir una antes de reservar.
-// Respuesta: [ { slug, nombre, direccion, descripcion } ]
+// `q` filtra por nombre o dirección (sin distinguir tildes). Se filtra y pagina acá
+// porque las que no reciben turnos se descartan después de la consulta.
+// Respuesta: { clinicas: [ { slug, nombre, direccion, descripcion } ], total, page, pageSize }
 exports.listarClinicas = async (req, res) => {
     try {
         const { data, error } = await supabase
@@ -64,14 +70,28 @@ exports.listarClinicas = async (req, res) => {
             .order('nombre', { ascending: true });
         if (error) throw error;
         const sinServicio = await clinicasSinTurnosOnline();
-        return res.json(
-            (data || [])
-                .filter((c) => !sinServicio.has(c.id))
-                .map((c) => ({
-                    slug: c.slug, nombre: c.nombre,
-                    direccion: c.direccion || null, descripcion: c.descripcion || null,
-                }))
-        );
+        const palabras = normalizar(req.query.q).split(/\s+/).filter(Boolean);
+        const todas = (data || [])
+            .filter((c) => !sinServicio.has(c.id))
+            .filter((c) => {
+                if (!palabras.length) return true;
+                const texto = normalizar(`${c.nombre} ${c.direccion || ''}`);
+                return palabras.every((p) => texto.includes(p));
+            });
+
+        const total = todas.length;
+        const paginas = Math.max(1, Math.ceil(total / CLINICAS_POR_PAGINA));
+        const page = Math.min(Math.max(1, Number.parseInt(req.query.page, 10) || 1), paginas);
+        const desde = (page - 1) * CLINICAS_POR_PAGINA;
+        return res.json({
+            clinicas: todas.slice(desde, desde + CLINICAS_POR_PAGINA).map((c) => ({
+                slug: c.slug, nombre: c.nombre,
+                direccion: c.direccion || null, descripcion: c.descripcion || null,
+            })),
+            total,
+            page,
+            pageSize: CLINICAS_POR_PAGINA,
+        });
     } catch (err) {
         console.error('Error listando clínicas:', err);
         return res.status(500).json({ error: 'Error al obtener las clínicas.' });

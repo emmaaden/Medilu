@@ -128,6 +128,13 @@ function calcularEstado(s, ahora = Date.now()) {
     return 'vencida';
 }
 
+// Fase X: % de descuento que rige hoy (0 = ninguno). Vencido, deja de aplicarse solo.
+function descuentoVigente(s, ahora = Date.now()) {
+    if (!s || !s.descuento_pct) return 0;
+    if (s.descuento_hasta && new Date(s.descuento_hasta).getTime() < ahora) return 0;
+    return s.descuento_pct;
+}
+
 function diasHasta(fechaMs, ahora = Date.now()) {
     return Math.max(0, Math.ceil((fechaMs - ahora) / DIA_MS));
 }
@@ -160,6 +167,9 @@ async function getPlanClinica(clinicaId) {
         profesionalesExtra: extra,
         admiteExtra: !!plan && plan.precioProfesionalExtra != null,
         maxRecepcion: plan ? plan.maxRecepcion : 0,
+        descuento: descuentoVigente(fila)
+            ? { pct: fila.descuento_pct, hasta: fila.descuento_hasta ?? null }
+            : null,
     };
 }
 
@@ -299,6 +309,7 @@ module.exports = {
     getPlanClinica,
     crearPrueba,
     calcularEstado,
+    descuentoVigente,
     tieneFeature,
     usoClinica,
     verificarAlta,

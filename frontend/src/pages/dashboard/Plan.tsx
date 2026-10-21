@@ -41,7 +41,9 @@ import {
   ESTADO_LABEL,
   formatoPesos,
   mesesDeRegalo,
+  montoPlan,
   waContratar,
+  type Descuento,
   type EstadoPlan,
   type Plan as PlanCatalogo,
 } from "@/lib/planes"
@@ -59,6 +61,8 @@ type PlanClinica = {
   maxProfesionales: number
   profesionalesExtra: number
   maxRecepcion: number | null
+  /** Descuento manual vigente (Fase X). */
+  descuento: Descuento | null
 }
 
 /** Débito automático de Mercado Pago (Fase M). */
@@ -129,16 +133,6 @@ const PAGO_LABEL: Record<string, string> = {
   in_process: "En proceso",
   cancelled: "Cancelado",
   refunded: "Reintegrado",
-}
-
-/** Monto por ciclo (espejo de calcularMonto en backend/utils/suscripcionMp.js). */
-function montoDe(p: PlanCatalogo, ciclo: Ciclo, extras: number) {
-  const extraMensual = p.precioProfesionalExtra == null ? 0 : extras * p.precioProfesionalExtra
-  if (ciclo === "anual") {
-    const factor = p.precioMensual > 0 ? p.precioAnual / p.precioMensual : 12
-    return Math.round(p.precioAnual + extraMensual * factor)
-  }
-  return Math.round(p.precioMensual + extraMensual)
 }
 
 /** Barra de uso de un tipo de asiento. `max` null = sin tope. */
@@ -325,6 +319,15 @@ export default function Plan() {
                 {plan.profesionalesExtra === 1 ? "" : "es"} extra.
               </p>
             )}
+            {plan.descuento && (
+              <p className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                <Badge variant="secondary">−{plan.descuento.pct} %</Badge>
+                <span className="text-muted-foreground">
+                  Tenés un {plan.descuento.pct} % de descuento en el plan
+                  {plan.descuento.hasta ? ` hasta el ${fecha(plan.descuento.hasta)}` : ""}.
+                </span>
+              </p>
+            )}
 
             {debito && (
               <div className="mt-5 rounded-lg border border-border bg-muted/30 p-4 text-sm">
@@ -454,6 +457,7 @@ export default function Plan() {
               ciclo={ciclo}
               actual={esActual && mismoCiclo}
               recomendar={!vigente}
+              descuentoPct={plan.descuento?.pct}
               accion={accion}
             />
           )
@@ -525,6 +529,7 @@ export default function Plan() {
           emailInicial={debito?.payerEmail || user?.email || ""}
           cambioDirecto={datos.cambioSinCheckout && eleccion.ciclo === plan.ciclo}
           primerCobro={datos.primerCobro}
+          descuento={plan.descuento}
           onClose={() => setEleccion(null)}
           onAplicado={async () => {
             setEleccion(null)
@@ -567,6 +572,7 @@ function ContratarDialog({
   emailInicial,
   cambioDirecto,
   primerCobro,
+  descuento,
   onClose,
   onAplicado,
 }: {
@@ -576,6 +582,7 @@ function ContratarDialog({
   emailInicial: string
   cambioDirecto: boolean
   primerCobro: string | null
+  descuento: Descuento | null
   onClose: () => void
   onAplicado: () => void
 }) {
@@ -590,7 +597,10 @@ function ContratarDialog({
   const nExtras = Number.parseInt(extras, 10)
   const extrasValidos = Number.isInteger(nExtras) && nExtras >= minimo && nExtras <= 500
   const noEntra = !admiteExtra && uso > plan.profesionalesIncluidos
-  const total = montoDe(plan, ciclo, extrasValidos ? nExtras : minimo)
+  const extrasTotal = extrasValidos ? nExtras : minimo
+  const pct = descuento?.pct ?? 0
+  const lista = montoPlan(plan, ciclo, extrasTotal)
+  const total = montoPlan(plan, ciclo, extrasTotal, pct)
 
   async function confirmar(e: React.FormEvent) {
     e.preventDefault()
@@ -677,9 +687,33 @@ function ContratarDialog({
             </div>
           )}
 
-          <div className="flex items-baseline justify-between rounded-lg bg-muted/40 px-4 py-3">
-            <span className="text-sm text-muted-foreground">Total por {ciclo === "anual" ? "año" : "mes"}</span>
-            <span className="text-xl font-semibold tabular-nums">{formatoPesos(total)}</span>
+          <div className="grid gap-1 rounded-lg bg-muted/40 px-4 py-3">
+            {pct > 0 && (
+              <>
+                <div className="flex items-baseline justify-between text-sm text-muted-foreground">
+                  <span>Precio de lista</span>
+                  <s className="tabular-nums">{formatoPesos(lista)}</s>
+                </div>
+                <div className="flex items-baseline justify-between text-sm">
+                  <span>
+                    Descuento {pct} %
+                    {descuento?.hasta && (
+                      <span className="text-muted-foreground"> · hasta el {fecha(descuento.hasta)}</span>
+                    )}
+                  </span>
+                  <span className="tabular-nums">−{formatoPesos(lista - total)}</span>
+                </div>
+              </>
+            )}
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm text-muted-foreground">Total por {ciclo === "anual" ? "año" : "mes"}</span>
+              <span className="text-xl font-semibold tabular-nums">{formatoPesos(total)}</span>
+            </div>
+            {pct > 0 && descuento?.hasta && (
+              <p className="text-xs text-muted-foreground">
+                Al terminar el descuento se cobra el precio de lista; te avisamos por email con 30 días de anticipación.
+              </p>
+            )}
           </div>
 
           <DialogFooter>
