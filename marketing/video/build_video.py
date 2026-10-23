@@ -19,8 +19,8 @@ ROOT = pathlib.Path(__file__).parent
 sys.path.insert(0, str(ROOT.parent))
 from marca import FONT_FACE, TOKENS, WHATSAPP, HANDLE, DIAS_PRUEBA, icon, iso, whatsapp  # noqa: E402
 
-VOZ = "es-AR-ElenaNeural"  # alternativa masculina: es-AR-TomasNeural
-VELOCIDAD = "+10%"
+VOZ = "es-UY-ValentinaNeural"  # rioplatense y más fluida que es-AR-ElenaNeural; masculina: es-AR-TomasNeural
+VELOCIDAD = "+0%"  # acelerarla la hace sonar trabada
 FPS = 30
 W, H = 1080, 1920
 LEAD, TAIL, FINAL = 0.3, 0.4, 2.2  # silencio antes/después de cada locución y al cierre

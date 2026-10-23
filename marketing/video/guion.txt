@@ -1,13 +1,13 @@
 [  0.0s] ¿Todavía das turnos por teléfono, entre paciente y paciente?
-[  4.9s] La agenda en un cuaderno, las fichas en un cajón y los turnos en tu WhatsApp.
-[ 10.6s] Con Medilu, tu consultorio entero entra en una app.
-[ 14.8s] Tus pacientes sacan turno solos, desde el celular, y les llega la confirmación por mail.
-[ 21.1s] En la consulta, dictás la historia clínica y queda guardada en la ficha, con diagnóstico y obra social.
-[ 28.4s] Hacés certificados con tu firma, y el paciente los recibe en su cuenta, junto con sus estudios.
-[ 35.2s] Sirve para cualquier especialidad, y si sos odontólogo, trae odontograma.
-[ 41.0s] Y para tus pacientes, Medilu es gratis. Siempre.
-[ 46.3s] Contratarlo es simple: creás tu cuenta de profesional, lo probás 14 días con todo, sin tarjeta, y elegís tu plan desde el panel.
-[ 55.4s] Hay planes desde $14.900 por mes, con IVA incluido.
-[ 60.9s] Probalo gratis: escribinos por WhatsApp y empezá hoy. Medilu: tu consultorio entero, en una app.
+[  5.1s] La agenda en un cuaderno, las fichas en un cajón y los turnos en tu WhatsApp.
+[ 11.0s] Con Medilu, tu consultorio entero entra en una app.
+[ 15.4s] Tus pacientes sacan turno solos, desde el celular, y les llega la confirmación por mail.
+[ 21.9s] En la consulta, dictás la historia clínica y queda guardada en la ficha, con diagnóstico y obra social.
+[ 29.6s] Hacés certificados con tu firma, y el paciente los recibe en su cuenta, junto con sus estudios.
+[ 36.7s] Sirve para cualquier especialidad, y si sos odontólogo, trae odontograma.
+[ 42.7s] Y para tus pacientes, Medilu es gratis. Siempre.
+[ 48.2s] Contratarlo es simple: creás tu cuenta de profesional, lo probás 14 días con todo, sin tarjeta, y elegís tu plan desde el panel.
+[ 57.7s] Hay planes desde $14.900 por mes, con IVA incluido.
+[ 63.4s] Probalo gratis: escribinos por WhatsApp y empezá hoy. Medilu: tu consultorio entero, en una app.
 
-Duración: 70.8 s · Voz: es-AR-ElenaNeural
+Duración: 73.7 s · Voz: es-UY-ValentinaNeural
