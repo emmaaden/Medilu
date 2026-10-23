@@ -58,10 +58,9 @@ def dictado(texto, d0, paso=0.16):
 # decirse cada fragmento: así lo que aparece en pantalla coincide con la voz.
 # ---------------------------------------------------------------------------
 ESCENAS = [
-    dict(vo=[C("¿Todavía das turnos por teléfono,"), C("entre paciente y paciente?")], html=lambda c: f"""
+    dict(vo=[C("¿Todavía das turnos por teléfono"), C("a tus pacientes?")], html=lambda c: f"""
         <div class="a pop ring-ic" style="--d:0s"><div class="wiggle">{icon("phone")}</div></div>
-        <h1 class="a rise center" style="--d:{c[0]}s">¿Todavía das turnos por teléfono?</h1>
-        <p class="a rise center muted" style="--d:{c[1]}s">Entre paciente y paciente…</p>"""),
+        <h1 class="a rise center" style="--d:{c[0]}s">¿Todavía das turnos por teléfono?</h1>"""),
 
     dict(vo=[C("La agenda en un cuaderno,"), C("las fichas en un cajón"), C("y los turnos en tu WhatsApp.")],
          html=lambda c: f"""
@@ -76,7 +75,7 @@ ESCENAS = [
         <div class="a rise wordmark" style="--d:{c[0] + .25}s">Medi<span>lu</span></div>
         <p class="a rise center" style="--d:{c[1]}s">Tu consultorio entero en una app</p>"""),
 
-    dict(vo=[C("Tus pacientes sacan turno solos, desde el celular,"), C("y les llega la confirmación por mail.")],
+    dict(vo=[C("Tus pacientes sacan turno solos desde el celular"), C("y les llega la confirmación por mail.")],
          html=lambda c: f"""
         <div class="a rise kicker" style="--d:0s">Turnos online</div>
         <div class="a rise phone" style="--d:.1s">
@@ -100,7 +99,7 @@ ESCENAS = [
           </div>
         </div>"""),
 
-    dict(vo=[C("Hacés certificados con tu firma,"), C("y el paciente los recibe en su cuenta,"),
+    dict(vo=[C("Hacés certificados con tu firma,"), C("y el paciente los recibe en su cuenta"),
              C("junto con sus estudios.")], html=lambda c: f"""
         <div class="a rise kicker" style="--d:0s">Certificados</div>
         <div class="a rise card cert" style="--d:.1s">
@@ -131,7 +130,7 @@ ESCENAS = [
           <div class="legend"><span><i style="background:oklch(0.58 0.2 25)"></i>Realizado</span><span><i style="background:var(--primary)"></i>A tratar</span></div>
         </div>"""),
 
-    dict(vo=[C("Y para tus pacientes,"), C("Medilu es gratis. Siempre.")], html=lambda c: f"""
+    dict(vo=[C("Y para tus pacientes,"), C("Medilu es gratis.")], html=lambda c: f"""
         <div class="a rise kicker" style="--d:0s">Para el paciente</div>
         <div class="a rise phone menu" style="--d:.1s">
           {"".join(f'<div class="a rise mi" style="--d:{.4 + i * .22:.2f}s">{icon(ic)}<b>{t}</b></div>' for i, (ic, t) in enumerate(
