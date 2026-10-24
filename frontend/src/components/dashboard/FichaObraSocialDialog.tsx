@@ -50,6 +50,28 @@ function diaDelRegistro(e: HistoryEntry) {
   return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : ""
 }
 
+// Cantidad de renglones elegida: se recuerda en este navegador (cada profesional suele
+// usar siempre la misma). Vacío = completar la hoja.
+const FILAS_KEY = "medilu.fichaObraSocial.filas"
+const MAX_FILAS = 100
+
+function filasGuardadas() {
+  try {
+    return localStorage.getItem(FILAS_KEY) ?? ""
+  } catch {
+    return ""
+  }
+}
+
+function guardarFilas(v: string) {
+  try {
+    if (v) localStorage.setItem(FILAS_KEY, v)
+    else localStorage.removeItem(FILAS_KEY)
+  } catch {
+    // Sin storage (modo privado): solo no se recuerda.
+  }
+}
+
 const ddmmaaaa = (ymd: string) => ymd.split("-").reverse().join("/")
 const soloDigitos = (s: string) => s.replace(/\D/g, "")
 
@@ -96,6 +118,7 @@ export function FichaObraSocialDialog({
   const [tituloEditado, setTitulo] = useState<string | null>(null)
   const [excluidas, setExcluidas] = useState<Set<string>>(new Set())
   const [carasEditadas, setCarasEditadas] = useState<Record<string, string>>({})
+  const [filasTexto, setFilasTexto] = useState(filasGuardadas)
 
   useEffect(() => {
     if (!open || emisor) return
@@ -147,6 +170,11 @@ export function FichaObraSocialDialog({
 
   const incluidas = filas.filter((f) => !excluidas.has(f.key))
 
+  // Renglones del PDF: nunca menos que las prestaciones incluidas (null = toda la hoja).
+  const filasPedidas = Number.parseInt(filasTexto, 10)
+  const totalFilas =
+    filasPedidas > 0 ? Math.max(Math.min(filasPedidas, MAX_FILAS), incluidas.length) : null
+
   function alternar(key: string, incluir: boolean) {
     setExcluidas((s) => {
       const n = new Set(s)
@@ -170,6 +198,7 @@ export function FichaObraSocialDialog({
       })),
       dientes: ultimoOdontograma?.dientes ?? [],
       odontograma: odontologica,
+      filas: totalFilas,
     })
   }
 
@@ -297,6 +326,33 @@ export function FichaObraSocialDialog({
             {REFERENCIA_CARAS}.
           </p>
         </div>
+
+        <Field
+          label="Filas del registro"
+          htmlFor="ficha-filas"
+          hint={
+            totalFilas === null
+              ? "Vacío: se completa la hoja con renglones en blanco para cargar a mano."
+              : totalFilas > incluidas.length
+                ? `Sale con ${totalFilas} filas: ${incluidas.length} cargada(s) y ${totalFilas - incluidas.length} en blanco.`
+                : `Sale con ${totalFilas} fila(s), sin renglones en blanco (no puede tener menos que las prestaciones incluidas).`
+          }
+        >
+          <Input
+            id="ficha-filas"
+            type="number"
+            inputMode="numeric"
+            min={Math.max(1, incluidas.length)}
+            max={MAX_FILAS}
+            placeholder="Toda la hoja"
+            className="h-10 sm:max-w-40"
+            value={filasTexto}
+            onChange={(e) => {
+              setFilasTexto(e.target.value)
+              guardarFilas(e.target.value)
+            }}
+          />
+        </Field>
 
         {odontologica && (
           <p className="text-sm text-muted-foreground">
