@@ -642,12 +642,16 @@ exports.getDataPacient = async (req, res) => {
 
         return res.status(200).json({
             fullName: [persona.nombre, persona.apellido].filter(Boolean).join(' '),
+            // Fase Y: separados y la fecha ISO, para el formulario de edición.
+            nombre: persona.nombre || '',
+            apellido: persona.apellido || '',
             telefono: persona.telefono || '',
             email: persona.email || '',
             dni: persona.dni,
             sexo: persona.sexo || '',
             direccion: persona.direccion || '',
             fechaNacimiento: fmtFecha(persona.fecha_nacimiento),
+            fechaNacimientoIso: persona.fecha_nacimiento || '',
             edad: String(calcEdad(persona.fecha_nacimiento) ?? ''),
             obraSocial: paciente.obra_social || '',
             idObraSocial: paciente.id_obra_social || null,
@@ -748,5 +752,184 @@ exports.actualizarCobertura = async (req, res) => {
     } catch (err) {
         console.error('Error actualizando la cobertura:', err);
         return res.status(500).json({ error: 'Error al actualizar la cobertura.' });
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Fase Y: el profesional corrige los datos personales de un paciente de la clínica
+// (buscado por su DNI actual). Solo toca la ficha de ESTA clínica.
+//   - Paciente con cuenta: el DNI y el email son su identidad y su acceso a Medilu, así
+//     que no se cambian desde acá (el email lo cambia él desde su perfil).
+//   - Sin cuenta: el DNI se puede corregir. Por JWT no se puede (faseP: la columna no
+//     tiene GRANT UPDATE), así que va con service_role, acotado a la ficha de la
+//     clínica, sin cuenta, y verificando que el DNI nuevo no esté usado en la clínica.
+// En la bitácora quedan los campos cambiados (y el DNI anterior si cambió).
+// ---------------------------------------------------------------------------
+const CAMPOS_EDITABLES = ['nombre', 'apellido', 'telefono', 'direccion', 'sexo', 'email'];
+
+exports.editarDatos = async (req, res) => {
+    try {
+        const { dni } = req.body;
+        const clinicaId = req.session.user.clinicaId;
+        if (!clinicaId) return res.status(400).json({ error: 'Tu usuario no tiene una clínica asignada.' });
+
+        const fnac = parseFechaNacimiento(req.body.fechaNacimiento);
+        if (!fnac.ok) return res.status(400).json({ error: fnac.error });
+
+        const db = await getUserSupabase(req);
+        if (!db) return res.status(ERR_SESION.status).json(ERR_SESION.body);
+
+        const { data: persona, error: personaError } = await db
+            .from('persona')
+            .select('id, id_auth, dni, nombre, apellido, telefono, direccion, sexo, email, fecha_nacimiento, paciente(id)')
+            .eq('dni', dni)
+            .eq('clinica_id', clinicaId)
+            .maybeSingle();
+        if (personaError) throw personaError;
+        const paciente = persona && persona.paciente && persona.paciente[0];
+        if (!paciente) return res.status(404).json({ error: 'Paciente no encontrado.' });
+
+        // Valores nuevos normalizados (vacío -> null), y solo los que cambian.
+        const nuevos = {};
+        for (const campo of CAMPOS_EDITABLES) {
+            if (req.body[campo] === undefined) continue;
+            let v = String(req.body[campo] || '').trim() || null;
+            if (campo === 'email' && v) v = v.toLowerCase();
+            if (v !== (persona[campo] || null)) nuevos[campo] = v;
+        }
+        if (req.body.fechaNacimiento !== undefined && fnac.fecha !== (persona.fecha_nacimiento || null)) {
+            nuevos.fecha_nacimiento = fnac.fecha;
+        }
+        const dniNuevo = req.body.dniNuevo ? String(req.body.dniNuevo).trim() : persona.dni;
+        const cambiaDni = dniNuevo !== persona.dni;
+
+        if (persona.id_auth && (cambiaDni || nuevos.email !== undefined)) {
+            return res.status(409).json({
+                error: 'El paciente tiene cuenta en Medilu: su DNI y su email no se cambian desde acá. El email lo puede cambiar él desde su perfil.',
+            });
+        }
+        if (!Object.keys(nuevos).length && !cambiaDni) return res.json({ message: 'Sin cambios', dni: persona.dni });
+
+        if (cambiaDni) {
+            const { data: otra, error: otraErr } = await supabase
+                .from('persona')
+                .select('id')
+                .eq('clinica_id', clinicaId)
+                .eq('dni', dniNuevo)
+                .neq('id', persona.id)
+                .limit(1);
+            if (otraErr) throw otraErr;
+            if (otra && otra.length) {
+                return res.status(409).json({ error: 'Ya hay otra persona con ese DNI en tu clínica.' });
+            }
+        }
+
+        if (Object.keys(nuevos).length) {
+            const { error } = await db.from('persona').update(nuevos).eq('id', persona.id);
+            if (error) throw error;
+        }
+        if (cambiaDni) {
+            const { data: upd, error } = await supabase
+                .from('persona')
+                .update({ dni: dniNuevo })
+                .eq('id', persona.id)
+                .eq('clinica_id', clinicaId)
+                .is('id_auth', null)
+                .select('id');
+            if (error) {
+                if (error.code === '23505') return res.status(409).json({ error: 'Ya hay otra persona con ese DNI en tu clínica.' });
+                throw error;
+            }
+            if (!upd || upd.length === 0) {
+                return res.status(409).json({ error: 'El paciente cambió mientras lo editabas. Probá de nuevo.' });
+            }
+        }
+
+        const nombre = nuevos.nombre !== undefined ? nuevos.nombre : persona.nombre;
+        const apellido = nuevos.apellido !== undefined ? nuevos.apellido : persona.apellido;
+        await registrarAcceso(req, {
+            accion: 'editar_datos_paciente',
+            idPaciente: paciente.id,
+            paciente: { nombre: [nombre, apellido].filter(Boolean).join(' '), dni: dniNuevo },
+            detalle: {
+                campos: [...Object.keys(nuevos), ...(cambiaDni ? ['dni'] : [])],
+                ...(cambiaDni ? { dniAnterior: persona.dni } : {}),
+            },
+        });
+
+        return res.json({ message: 'Datos actualizados', dni: dniNuevo });
+    } catch (err) {
+        console.error('Error editando los datos del paciente:', err);
+        return res.status(500).json({ error: 'Error al guardar los datos del paciente.' });
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Fase Y: pacientes de la clínica, paginados y en orden alfabético (apellido, nombre),
+// para el buscador del registro clínico. `q` filtra por nombre, apellido o DNI: cada
+// palabra tiene que aparecer en alguno de los tres, sin distinguir tildes.
+// Devuelve solo lo necesario para elegir al paciente (la ficha se pide aparte con
+// get-data-pacient, que es lo que queda en la bitácora).
+// Respuesta: { pacientes: [ { dni, nombre, apellido, obraSocial, tieneCuenta } ], total, page, pageSize }
+// ---------------------------------------------------------------------------
+const PACIENTES_POR_PAGINA = 10;
+
+// Palabra del buscador -> regex POSIX que acepta las vocales con o sin tilde. La palabra
+// se reduce a letras y números antes, así no puede meter metacaracteres ni romper la
+// sintaxis del filtro de PostgREST.
+const VARIANTES = { a: '[aáà]', e: '[eéè]', i: '[iíì]', o: '[oóò]', u: '[uúüù]', n: '[nñ]' };
+function regexPalabra(palabra) {
+    return palabra
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .replace(/[aeioun]/g, (c) => VARIANTES[c]);
+}
+
+exports.listaPacientes = async (req, res) => {
+    try {
+        const clinicaId = req.session.user.clinicaId;
+        if (!clinicaId) return res.status(400).json({ error: 'Tu usuario no tiene una clínica asignada.' });
+
+        const db = await getUserSupabase(req);
+        if (!db) return res.status(ERR_SESION.status).json(ERR_SESION.body);
+
+        const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+        const desde = (page - 1) * PACIENTES_POR_PAGINA;
+
+        let query = db
+            .from('persona')
+            .select('dni, nombre, apellido, id_auth, paciente!inner(obra_social)', { count: 'exact' })
+            .eq('clinica_id', clinicaId);
+        const palabras = String(req.query.q || '').split(/\s+/).map(regexPalabra).filter(Boolean).slice(0, 5);
+        for (const p of palabras) {
+            query = query.or(`nombre.imatch.${p},apellido.imatch.${p},dni.imatch.${p}`);
+        }
+        const { data, count, error } = await query
+            .order('apellido', { ascending: true, nullsFirst: false })
+            .order('nombre', { ascending: true })
+            .order('id', { ascending: true })
+            .range(desde, desde + PACIENTES_POR_PAGINA - 1);
+        if (error) throw error;
+
+        return res.json({
+            pacientes: (data || []).map((p) => {
+                const ficha = Array.isArray(p.paciente) ? p.paciente[0] : p.paciente;
+                return {
+                    dni: p.dni,
+                    nombre: p.nombre || '',
+                    apellido: p.apellido || '',
+                    obraSocial: (ficha && ficha.obra_social) || '',
+                    tieneCuenta: !!p.id_auth,
+                };
+            }),
+            total: count || 0,
+            page,
+            pageSize: PACIENTES_POR_PAGINA,
+        });
+    } catch (err) {
+        console.error('Error listando los pacientes:', err);
+        return res.status(500).json({ error: 'No se pudieron cargar los pacientes.' });
     }
 };

@@ -272,7 +272,7 @@ const ACCIONES_PACIENTE = [
     'ver_registro_auditoria', 'revisar', 'responder',
     'solicitar_autorizacion', 'ver_autorizacion', 'resolver_autorizacion',
     'ver_adjunto_autorizacion', 'editar_cobertura',
-    'codigo_vinculacion', 'vincular_historia',
+    'codigo_vinculacion', 'vincular_historia', 'editar_datos_paciente',
 ];
 
 exports.misAccesos = async (req, res) => {

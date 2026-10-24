@@ -6,6 +6,8 @@ import {
   UserPlus,
   ArrowLeft,
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
   Download,
   Save,
@@ -895,6 +897,325 @@ function CodigoVinculacionFicha({ dni }: { dni: string }) {
   )
 }
 
+/* --------------------------- Editar datos --------------------------- */
+
+/** Corrige los datos personales del paciente. Con cuenta, el DNI y el email quedan fijos. */
+function EditarDatosDialog({
+  paciente,
+  open,
+  onOpenChange,
+  onGuardado,
+}: {
+  paciente: Paciente
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  onGuardado: (dni: string) => void
+}) {
+  // El contenido se desmonta al cerrar, así que cada apertura arranca de los datos actuales.
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+        <EditarDatosContenido paciente={paciente} onClose={() => onOpenChange(false)} onGuardado={onGuardado} />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function EditarDatosContenido({
+  paciente,
+  onClose,
+  onGuardado,
+}: {
+  paciente: Paciente
+  onClose: () => void
+  onGuardado: (dni: string) => void
+}) {
+  // Fichas viejas tienen el nombre completo en `nombre` y el apellido vacío.
+  const [form, setForm] = useState({
+    nombre: paciente.nombre ?? paciente.fullName,
+    apellido: paciente.apellido ?? "",
+    dni: paciente.dni,
+    telefono: paciente.telefono || "",
+    email: paciente.email || "",
+    sexo: paciente.sexo || "",
+    direccion: paciente.direccion || "",
+    fechaNacimiento: paciente.fechaNacimientoIso || "",
+  })
+  const [guardando, setGuardando] = useState(false)
+  const conCuenta = !!paciente.tieneCuenta
+  const errorFecha = form.fechaNacimiento ? errorFechaNacimiento(form.fechaNacimiento) : null
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  async function guardar(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.nombre.trim() || !form.dni.trim()) {
+      toast.warning("El nombre y el DNI son obligatorios.")
+      return
+    }
+    if (errorFecha) {
+      toast.warning(errorFecha)
+      return
+    }
+    setGuardando(true)
+    try {
+      const r = await api.put<{ dni: string }>("/pacient/datos", {
+        dni: paciente.dni,
+        ...(conCuenta ? {} : { dniNuevo: form.dni.trim(), email: form.email.trim() }),
+        nombre: form.nombre.trim(),
+        apellido: form.apellido.trim(),
+        telefono: form.telefono,
+        sexo: form.sexo,
+        direccion: form.direccion,
+        fechaNacimiento: form.fechaNacimiento,
+      })
+      toast.success("Datos actualizados")
+      onGuardado(r.dni)
+      onClose()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "No se pudieron guardar los datos.")
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Datos del paciente</DialogTitle>
+        <DialogDescription>
+          Corregí lo que haya quedado mal cargado. El cambio queda registrado en la bitácora.
+        </DialogDescription>
+      </DialogHeader>
+      <form onSubmit={guardar} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Nombre" htmlFor="ed-nombre" required>
+            <Input id="ed-nombre" className="h-10" value={form.nombre} onChange={set("nombre")} />
+          </Field>
+          <Field label="Apellido" htmlFor="ed-apellido">
+            <Input id="ed-apellido" className="h-10" value={form.apellido} onChange={set("apellido")} />
+          </Field>
+          <Field
+            label="DNI"
+            htmlFor="ed-dni"
+            required
+            hint={conCuenta ? "Tiene cuenta en Medilu: el DNI no se cambia desde acá." : undefined}
+          >
+            <Input
+              id="ed-dni"
+              inputMode="numeric"
+              className="h-10"
+              value={form.dni}
+              onChange={set("dni")}
+              disabled={conCuenta}
+            />
+          </Field>
+          <Field label="Teléfono" htmlFor="ed-telefono">
+            <Input id="ed-telefono" type="tel" className="h-10" value={form.telefono} onChange={set("telefono")} />
+          </Field>
+          <Field
+            label="Email"
+            htmlFor="ed-email"
+            hint={conCuenta ? "Es su acceso a Medilu: lo cambia el paciente desde su perfil." : undefined}
+          >
+            <Input
+              id="ed-email"
+              type="email"
+              autoComplete="off"
+              className="h-10"
+              value={form.email}
+              onChange={set("email")}
+              disabled={conCuenta}
+            />
+          </Field>
+          <Field label="Sexo" htmlFor="ed-sexo">
+            <SelectField
+              id="ed-sexo"
+              value={form.sexo}
+              onValueChange={(v) => setForm((f) => ({ ...f, sexo: v }))}
+              options={SEXO}
+            />
+          </Field>
+          <Field label="Dirección" htmlFor="ed-direccion">
+            <Input id="ed-direccion" className="h-10" value={form.direccion} onChange={set("direccion")} />
+          </Field>
+          <Field label="Fecha de nacimiento" htmlFor="ed-fnac" error={errorFecha ?? undefined}>
+            <Input
+              id="ed-fnac"
+              type="date"
+              min={FECHA_NAC_MIN}
+              max={hoyAR()}
+              className="h-10"
+              aria-invalid={!!errorFecha}
+              value={form.fechaNacimiento}
+              onChange={set("fechaNacimiento")}
+            />
+          </Field>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={guardando}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={guardando}>
+            {guardando ? <Loader2 className="animate-spin" /> : <Save />}
+            Guardar
+          </Button>
+        </DialogFooter>
+      </form>
+    </>
+  )
+}
+
+/* --------------------------- Lista de pacientes --------------------------- */
+
+type PacienteLista = {
+  dni: string
+  nombre: string
+  apellido: string
+  obraSocial: string
+  tieneCuenta: boolean
+}
+type ListaPacientes = { pacientes: PacienteLista[]; total: number; page: number; pageSize: number }
+
+/** Pacientes de la clínica, paginados, con buscador por nombre, apellido o DNI. */
+function ListaPacientesClinica({
+  onElegir,
+  abriendo,
+  version,
+}: {
+  onElegir: (dni: string) => void
+  /** DNI de la ficha que se está abriendo (muestra el spinner en esa fila). */
+  abriendo: string | null
+  /** Cambia cuando hay que volver a pedir la página (se editó un paciente). */
+  version: number
+}) {
+  const [q, setQ] = useState("")
+  const [page, setPage] = useState(1)
+  const [lista, setLista] = useState<ListaPacientes | null>(null)
+  const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let vigente = true
+    setCargando(true)
+    // La primera carga va directo; después se espera un poco para no buscar en cada tecla.
+    const t = setTimeout(
+      async () => {
+        try {
+          const params = new URLSearchParams({ page: String(page) })
+          if (q.trim()) params.set("q", q.trim())
+          const d = await api.get<ListaPacientes>(`/pacient/lista?${params}`)
+          if (!vigente) return
+          setLista(d)
+          setError(false)
+        } catch {
+          if (vigente) setError(true)
+        } finally {
+          if (vigente) setCargando(false)
+        }
+      },
+      lista ? 300 : 0
+    )
+    return () => {
+      vigente = false
+      clearTimeout(t)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, page, version])
+
+  function buscar(e: React.FormEvent) {
+    e.preventDefault()
+    // Enter con un único resultado abre su ficha.
+    if (!cargando && lista?.pacientes.length === 1) onElegir(lista.pacientes[0].dni)
+  }
+
+  const paginas = lista ? Math.max(1, Math.ceil(lista.total / lista.pageSize)) : 1
+
+  return (
+    <Card>
+      <CardContent className="p-4 sm:p-6">
+        <form onSubmit={buscar} className="relative">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Buscar por nombre, apellido o DNI"
+            aria-label="Buscar paciente"
+            className="h-10 pl-9"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value)
+              setPage(1)
+            }}
+          />
+        </form>
+
+        {error && !lista ? (
+          <p className="mt-4 text-sm text-destructive">No se pudieron cargar los pacientes.</p>
+        ) : !lista ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="size-6 animate-spin text-primary" />
+          </div>
+        ) : (
+          <>
+            <ul
+              className={`mt-4 divide-y divide-border rounded-lg border border-border transition-opacity ${cargando ? "opacity-60" : ""}`}
+              aria-busy={cargando}
+            >
+              {lista.pacientes.map((p) => {
+                const nombre = [p.apellido, p.nombre].filter(Boolean).join(", ") || "Sin nombre"
+                return (
+                  <li key={p.dni}>
+                    <button
+                      type="button"
+                      onClick={() => onElegir(p.dni)}
+                      disabled={!!abriendo}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/60 disabled:cursor-wait"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{nombre}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          DNI {p.dni}
+                          {p.obraSocial ? ` · ${p.obraSocial}` : ""}
+                        </p>
+                      </div>
+                      {abriendo === p.dni ? (
+                        <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+                      ) : (
+                        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                      )}
+                    </button>
+                  </li>
+                )
+              })}
+              {lista.pacientes.length === 0 && (
+                <li className="px-4 py-3 text-sm text-muted-foreground">
+                  {q.trim() ? "Ningún paciente coincide con la búsqueda." : "Tu clínica todavía no tiene pacientes."}
+                </li>
+              )}
+            </ul>
+            {lista.total > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-4 text-sm text-muted-foreground">
+                <span>
+                  {lista.total} {lista.total === 1 ? "paciente" : "pacientes"} · página {lista.page} de {paginas}
+                </span>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                    <ChevronLeft /> Anterior
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={page >= paginas} onClick={() => setPage(page + 1)}>
+                    Siguiente <ChevronRight />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 /* --------------------------- Buscar / ficha --------------------------- */
 function BuscarPaciente({
   isOdonto,
@@ -908,9 +1229,12 @@ function BuscarPaciente({
   onBack: () => void
 }) {
   const { user } = useAuth()
-  const [dni, setDni] = useState("")
-  const [loading, setLoading] = useState(false)
+  // DNI de la ficha que se está abriendo desde la lista.
+  const [abriendo, setAbriendo] = useState<string | null>(null)
   const [paciente, setPaciente] = useState<Paciente | null>(null)
+  // Fase Y: edición de los datos personales (y refresco de la lista al guardar).
+  const [editDatos, setEditDatos] = useState(false)
+  const [versionLista, setVersionLista] = useState(0)
 
   // Nueva consulta
   const [sintomas, setSintomas] = useState("")
@@ -944,10 +1268,8 @@ function BuscarPaciente({
     }
   }
 
-  async function buscar(e: React.FormEvent) {
-    e.preventDefault()
-    if (!dni) return
-    setLoading(true)
+  async function abrir(dni: string) {
+    setAbriendo(dni)
     try {
       const data = await api.post<Paciente>("/pacient/get-data-pacient", { dni })
       setPaciente(data)
@@ -955,9 +1277,18 @@ function BuscarPaciente({
       const last = data.history?.[data.history.length - 1]
       setDientes(last?.dientes || [])
     } catch {
-      toast.error("Datos incorrectos. Asegurate de que el paciente esté registrado.")
+      toast.error("No se pudo abrir la ficha del paciente.")
     } finally {
-      setLoading(false)
+      setAbriendo(null)
+    }
+  }
+
+  async function datosGuardados(dni: string) {
+    setVersionLista((v) => v + 1)
+    try {
+      setPaciente(await api.post<Paciente>("/pacient/get-data-pacient", { dni }))
+    } catch {
+      toast.error("Los datos se guardaron, pero no se pudo recargar la ficha.")
     }
   }
 
@@ -999,33 +1330,18 @@ function BuscarPaciente({
     }
   }
 
-  if (!paciente) {
-    return (
-      <div className="mt-6 max-w-lg">
-        <Button variant="ghost" onClick={onBack} className="mb-4">
-          <ArrowLeft /> Volver
-        </Button>
-        <Card>
-          <CardContent className="p-4 sm:p-6">
-            <form onSubmit={buscar} className="flex flex-col gap-3 sm:flex-row">
-              <Input
-                type="number"
-                inputMode="numeric"
-                placeholder="DNI del paciente"
-                className="h-10"
-                value={dni}
-                onChange={(e) => setDni(e.target.value)}
-              />
-              <Button type="submit" size="lg" disabled={loading}>
-                {loading ? <Loader2 className="animate-spin" /> : <Search />}
-                Buscar
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  // La lista queda montada (oculta) mientras se ve una ficha: al volver conserva la
+  // búsqueda y la página.
+  const lista = (
+    <div className={paciente ? "hidden" : "mt-6 max-w-2xl"}>
+      <Button variant="ghost" onClick={onBack} className="mb-4">
+        <ArrowLeft /> Volver
+      </Button>
+      <ListaPacientesClinica onElegir={abrir} abriendo={abriendo} version={versionLista} />
+    </div>
+  )
+
+  if (!paciente) return lista
 
   const datos: [string, React.ReactNode][] = [
     ["Teléfono", paciente.telefono],
@@ -1042,10 +1358,12 @@ function BuscarPaciente({
   ]
 
   return (
+    <>
+    {lista}
     <div className="mt-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Button variant="ghost" onClick={() => setPaciente(null)}>
-          <ArrowLeft /> Nueva búsqueda
+          <ArrowLeft /> Volver a la lista
         </Button>
         <div className="flex flex-wrap gap-2">
           {tieneFeature(user?.plan, "autorizaciones") && (
@@ -1079,6 +1397,9 @@ function BuscarPaciente({
               <h2 className="text-xl font-semibold">{paciente.fullName}</h2>
               <p className="text-sm text-muted-foreground">Ficha del paciente</p>
             </div>
+            <Button variant="ghost" size="sm" onClick={() => setEditDatos(true)}>
+              <Pencil /> Datos
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -1201,6 +1522,13 @@ function BuscarPaciente({
         <p className="mt-4 text-sm text-muted-foreground">No hay consultas registradas.</p>
       )}
 
+      <EditarDatosDialog
+        paciente={paciente}
+        open={editDatos}
+        onOpenChange={setEditDatos}
+        onGuardado={datosGuardados}
+      />
+
       <EnviarAccesoDialog
         paciente={paciente}
         open={enviarAcceso}
@@ -1248,5 +1576,6 @@ function BuscarPaciente({
         </DialogContent>
       </Dialog>
     </div>
+    </>
   )
 }
