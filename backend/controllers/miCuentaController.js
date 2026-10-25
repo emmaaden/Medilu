@@ -18,7 +18,7 @@ const { supabase } = require('../config/supabaseClient');
 const { serializarDiente } = require('../utils/odontograma');
 const { columnasCobertura } = require('../utils/cobertura');
 const { serializarCodificacion, SELECT_CODIFICACION } = require('../utils/codificacion');
-const { fichasPaciente } = require('../utils/fichasPaciente');
+const { fichasDeSesion } = require('../utils/fichasPaciente');
 const { canjearCodigoVinculacion } = require('../utils/cuentaPaciente');
 const { registrarAcceso } = require('../utils/bitacora');
 const { parseFechaNacimiento, calcEdad } = require('../utils/fechaNacimiento');
@@ -49,7 +49,7 @@ function fmtFecha(iso) {
 
 // Fichas de paciente de la cuenta de la sesión (la principal primero).
 function getFichas(session) {
-    return fichasPaciente(session.user.id);
+    return fichasDeSesion(session.user);
 }
 
 // Registros clínicos de todas las fichas, con la clínica de cada uno (más viejo primero).

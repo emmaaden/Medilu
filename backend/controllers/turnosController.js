@@ -35,7 +35,7 @@ exports.misTurnos = async (req, res) => {
         const { data, error } = await db
             .from('turno')
             .select(SELECT_PACIENTE)
-            .in('id_paciente', await misPacienteIds(req.session.user.id))
+            .in('id_paciente', await misPacienteIds(req.session.user))
             .order('inicio', { ascending: true });
         if (error) throw error;
 
@@ -58,7 +58,7 @@ exports.proximoTurno = async (req, res) => {
         const { data, error } = await db
             .from('turno')
             .select(SELECT_PACIENTE)
-            .in('id_paciente', await misPacienteIds(req.session.user.id))
+            .in('id_paciente', await misPacienteIds(req.session.user))
             .eq('estado', 'reservado')
             .gte('inicio', new Date().toISOString())
             .order('inicio', { ascending: true })
@@ -90,7 +90,7 @@ exports.cancelarPropio = async (req, res) => {
             .from('turno')
             .select('id, estado')
             .eq('id', id)
-            .in('id_paciente', await misPacienteIds(req.session.user.id))
+            .in('id_paciente', await misPacienteIds(req.session.user))
             .maybeSingle();
         if (error) throw error;
         if (!turno) return res.status(404).json({ error: 'Turno no encontrado.' });

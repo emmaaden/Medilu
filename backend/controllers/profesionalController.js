@@ -3,6 +3,7 @@
 // La identidad se toma de la sesión (id = auth.users; idRole = profesional.id).
 const { getUserSupabase } = require('../middleware/userSupabase');
 const { errorDb, registrarError } = require('../utils/errores');
+const { areaEfectiva } = require('../utils/vista');
 
 const ERR_SESION = { error: 'Tu sesión expiró. Iniciá sesión de nuevo.' };
 
@@ -83,7 +84,7 @@ exports.getEspProf = async (req, res) => {
             return res.status(404).json({ error: "Especialidad del profesional no encontrada" })
         }
 
-        return res.json({ especialidad_profesional: data[0]?.id_especialidad.nombre })
+        return res.json({ especialidad_profesional: areaEfectiva(req, data[0]?.id_especialidad.nombre) })
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error al obtener el área' });

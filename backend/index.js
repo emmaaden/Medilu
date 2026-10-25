@@ -47,6 +47,7 @@ const schemas = require('./validators/schemas');
 const planes = require('./utils/planes');
 const { soloLectura } = require('./middleware/plan');
 const { sesionVigente } = require('./middleware/sesionVigente');
+const { vistaSoloLectura, vistaActiva } = require('./utils/vista'); // Fase Z: "Ver como"
 const { manejadorErrores } = require('./utils/errores');
 
 const app = express();
@@ -211,6 +212,8 @@ app.use(session({
 // Auditoría 2026-10-15 (#7): la sesión del staff se revalida contra sus membresías
 // (baja o cambio de rol se aplican sin esperar a que venza la cookie).
 app.use(sesionVigente);
+// Fase Z: "Ver como paciente" (plataforma) es solo lectura.
+app.use(vistaSoloLectura);
 
 // ---------------------------------------------------------------------------
 // Estáticos y rutas
@@ -348,6 +351,8 @@ app.get('/api/user', async (req, res) => {
         plan,
         // Fase L: equipo de la plataforma (activa planes y edita precios).
         esPlataforma: planes.esAdminPlataforma(u.email),
+        // Fase Z: "Ver como" activo (rol/especialidad simulados) o null.
+        vista: (vistaActiva(req) && u.vista) || null,
     });
 });
 

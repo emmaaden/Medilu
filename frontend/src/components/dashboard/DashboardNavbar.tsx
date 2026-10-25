@@ -25,6 +25,7 @@ import {
   KeyRound,
   CirclePlus,
   HousePlus,
+  Eye,
 } from "lucide-react"
 import { cn } from "cn"
 import { Button } from "@/components/ui/button"
@@ -57,6 +58,8 @@ import { Logo } from "@/components/site/Logo"
 import { HELP_URL } from "@/lib/site"
 import { useAuth } from "@/contexts/AuthContext"
 import { ThemeToggle } from "@/components/site/ThemeToggle"
+import { VistaBanner } from "@/components/VistaBanner"
+import { VerComoDialog } from "@/components/VerComoDialog"
 import { ESTADO_LABEL, tieneFeature, type Feature } from "@/lib/planes"
 import { cambiarPerfil } from "@/lib/perfil"
 
@@ -159,6 +162,7 @@ export function DashboardNavbar() {
   const [cambiarPass, setCambiarPass] = useState(false)
   const [unirse, setUnirse] = useState(false)
   const [consultorio, setConsultorio] = useState(false)
+  const [verComo, setVerComo] = useState(false)
 
   // Fase E: la recepción SOLO ve el panel de turnos. Fase J: el auditor, solo el suyo
   // (aunque el plan ya no lo incluya: la página le explica por qué).
@@ -221,6 +225,8 @@ export function DashboardNavbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
+      {/* Fase Z: "Ver como" activo (solo la plataforma). */}
+      <VistaBanner vista={user?.vista} />
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <div className="flex items-center gap-6">
           <Logo to="/dashboard" />
@@ -336,6 +342,11 @@ export function DashboardNavbar() {
                     <UserRound /> Entrar como paciente
                   </DropdownMenuItem>
                 )}
+                {user?.esPlataforma && (
+                  <DropdownMenuItem onSelect={() => setVerComo(true)}>
+                    <Eye /> Ver como…
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onSelect={() => setCambiarPass(true)}>
                   <KeyRound /> Cambiar contraseña
                 </DropdownMenuItem>
@@ -416,6 +427,18 @@ export function DashboardNavbar() {
                     <UserRound /> Entrar como paciente
                   </Button>
                 )}
+                {user?.esPlataforma && (
+                  <Button
+                    variant="ghost"
+                    className="mb-2 w-full"
+                    onClick={() => {
+                      setOpen(false)
+                      setVerComo(true)
+                    }}
+                  >
+                    <Eye /> Ver como…
+                  </Button>
+                )}
                 {puedeUnirse && (
                   <Button
                     variant="ghost"
@@ -462,6 +485,8 @@ export function DashboardNavbar() {
           </Sheet>
         </div>
       </div>
+
+      <VerComoDialog open={verComo} onOpenChange={setVerComo} vista={user?.vista ?? null} />
 
       <Dialog open={cambiarPass} onOpenChange={setCambiarPass}>
         <DialogContent>

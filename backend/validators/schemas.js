@@ -475,5 +475,12 @@ module.exports = {
         aplicarPrecios: z.object({
             dias: z.number().int().min(30, 'El aviso tiene que ser de al menos 30 días').max(365),
         }),
+        // Fase Z: "Ver como" (utils/vista).
+        vista: z.object({
+            rol: z.enum(['admin', 'profesional', 'recepcion', 'auditor', 'paciente'], 'Rol inválido'),
+            especialidad: z.string().trim().min(1).max(80).nullable().optional(),
+            pacienteId: z.number().int().positive().nullable().optional(),
+            alcanceIdObraSocial: z.number().int().positive().nullable().optional(),
+        }),
     },
 };

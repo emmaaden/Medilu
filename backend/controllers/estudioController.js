@@ -94,7 +94,7 @@ exports.listar = async (req, res) => {
             )
             // Fase O: los de todas sus fichas, y solo los propios (la RLS también deja ver
             // los compartidos con la cuenta si además es profesional).
-            .in('id_paciente', await misPacienteIds(req.session.user.id))
+            .in('id_paciente', await misPacienteIds(req.session.user))
             .order('subido_en', { ascending: false });
         if (error) return errorDb(res, error);
 
