@@ -88,7 +88,7 @@ Portadas: `instagram/destacadas/portadas/` (subirlas como portada al editar cada
 | Semana | Lunes | Miércoles | Viernes | Historias |
 |---|---|---|---|---|
 | 1 — Lanzamiento | Carrusel 1 (fijar) | Carrusel 2 Planes (fijar) | Video (Reel, fijar) | Subir las 5 destacadas |
-| 2 — Turnos | Post «Turnos sin llamar» (paciente) | Reel corto: un paciente saca turno (grabación de pantalla) | Post: cómo contratar (reusar historia «Contratar» 1) | Encuesta: «¿Cómo das turnos hoy?» |
+| 2 — Turnos ([detalle](SEMANA_2.md)) | Post «Turnos sin llamar» (paciente) | Reel «23:14»: una paciente saca turno de noche y a la mañana está en la agenda | Carrusel «Cómo contratar» (la destacada en 7 placas) | Encuesta: «¿Cómo das turnos hoy?» |
 | 3 — Consulta | Reel: dictado por voz en una consulta | Carrusel: certificado con firma en 3 pasos | Post: odontograma | Caja de preguntas para profesionales |
 | 4 — Precio y confianza | Post: «Qué pasa con tus datos si no contratás» | Carrusel 2 reposteado en historias | Video repost + CTA PRUEBA | Recordatorio: 14 días gratis |
 
@@ -104,6 +104,8 @@ Grabaciones de pantalla para los Reels: usar **DEV-Medilu** con el seed de datos
 | Post paciente «Turnos sin llamar» | 1080×1350 | `instagram/posts/` | ídem |
 | Destacadas (5 grupos) + portadas | 1080×1920 | `instagram/destacadas/` | ídem |
 | Video ilustrativo con voz en off (+ portada, guion) | 1080×1920, MP4, 71 s, subtitulado | `video/medilu-video.mp4` | `python video/build_video.py` (ver requisitos en el script) |
+| Semana 2: carrusel «Cómo contratar» | 7 × 1080×1350 | `instagram/carrusel-contratar/` | `python instagram/build.py` |
+| Semana 2: reel «23:14» (+ portada, guion) | 1080×1920, MP4, 36 s, subtitulado | `video/reel-turno.mp4` | `python video/build_video.py reel-turno` |
 
 Los precios están como constantes al principio de `instagram/build.py`: si cambia la tabla
 `plan`, actualizarlos ahí y regenerar.

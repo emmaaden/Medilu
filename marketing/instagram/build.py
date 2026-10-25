@@ -2,6 +2,7 @@
 
   carrusel-fijado-1/   «Qué es Medilu»          9 × 1080×1350
   carrusel-planes/     «Planes y precios»       6 × 1080×1350
+  carrusel-contratar/  «Cómo contratar»         7 × 1080×1350
   posts/               posts sueltos            1080×1350
   destacadas/<grupo>/  historias destacadas     1080×1920
   destacadas/portadas/ portadas de destacadas   1080×1920
@@ -248,6 +249,16 @@ contratar = [
      '<p>O comentá <span class="kw">PRUEBA</span> en cualquier post.</p>', True),
 ]
 
+# Semana 2 · la destacada «Contratar» como carrusel 1080×1350 (el paso 4, con menos menú para que entre)
+carrusel_contratar = [
+    *contratar[:4],
+    (paso(4) + f'<h2>Elegí tu plan</h2><p>En el panel, entrá a <b>Plan</b> y tocá <b>Contratar</b>. {paso4_texto}</p>'
+     f'<div class="card"><div class="navitem">{icon("calendar-days")} Turnos</div>'
+     f'<div class="navitem on">{icon("credit-card")} Plan</div>'
+     f'<div class="btn" style="margin-top:28px">Contratar Equipo</div></div>', False),
+    *contratar[5:],
+]
+
 planes_st = [
     (f'<div class="kicker">Planes</div><h2>Un plan para cada consultorio</h2><p style="font-size:40px">Precio final por mes, IVA incluido.</p>'
      '<div class="mini">' + "".join(
@@ -341,6 +352,7 @@ def render(pages, folder, w, h):
 
 render(post_set(carrusel1), "carrusel-fijado-1", 1080, 1350)
 render(post_set(carrusel_planes), "carrusel-planes", 1080, 1350)
+render(post_set(carrusel_contratar), "carrusel-contratar", 1080, 1350)
 shot(post_set(post_paciente)[0], ROOT / "posts" / "paciente-turnos-sin-llamar.png", 1080, 1350)
 for nombre, slides in [("contratar", contratar), ("planes", planes_st), ("funciones", funciones),
                        ("pacientes", pacientes), ("preguntas", preguntas)]:
