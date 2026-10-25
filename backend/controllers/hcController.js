@@ -18,6 +18,7 @@ const { puedeSumarFicha } = require('../utils/membresias');
 const { serializarCodificacion, SELECT_CODIFICACION } = require('../utils/codificacion');
 const { errorDb } = require('../utils/errores');
 const { parseFechaNacimiento } = require('../utils/fechaNacimiento');
+const ped = require('../utils/pediatria');
 
 const FORMATO = 'medilu.hc';
 // Exports generados con los nombres anteriores (AgendaSalud, Agenlu); se siguen aceptando al importar.
@@ -43,10 +44,36 @@ async function pacienteIdsEnAlcance(clinicaId, esAdmin, idProfesional) {
     return [...new Set((data || []).map((r) => r.id_paciente))];
 }
 
+// Fase Z: datos pediátricos de la clínica por paciente (solo los que tienen algo).
+async function pediatriaDe(clinicaId, pacienteIds) {
+    const consulta = (tabla, extra = (q) => q) => extra(supabase.from(tabla).select('*')
+        .in('id_paciente', pacienteIds).eq('clinica_id', clinicaId));
+    const [peri, med, vac, hit] = await Promise.all([
+        consulta('antecedente_perinatal'),
+        consulta('medicion_crecimiento', (q) => q.eq('anulada', false).order('fecha')),
+        consulta('vacuna_aplicada', (q) => q.eq('anulada', false).order('fecha')),
+        consulta('hito_desarrollo'),
+    ]);
+    const error = peri.error || med.error || vac.error || hit.error;
+    if (error) throw error;
+    const out = new Map();
+    const de = (id) => {
+        if (!out.has(id)) out.set(id, { perinatal: null, mediciones: [], vacunas: [], hitos: [] });
+        return out.get(id);
+    };
+    const sinAutor = ({ idProfesional, ...resto }) => resto; // eslint-disable-line no-unused-vars
+    for (const r of peri.data || []) de(r.id_paciente).perinatal = ped.serializarPerinatal(r);
+    for (const r of med.data || []) de(r.id_paciente).mediciones.push(sinAutor(ped.serializarMedicion(r)));
+    for (const r of vac.data || []) de(r.id_paciente).vacunas.push(sinAutor(ped.serializarVacuna(r)));
+    for (const r of hit.data || []) de(r.id_paciente).hitos.push(ped.serializarHito(r));
+    return out;
+}
+
 // Arma el objeto de exportación (pacientes + registros + odontograma) para un set de ids.
 async function construirExport(clinicaId, pacienteIds, meta) {
     let pacientes = [];
     let registrosPorPaciente = new Map();
+    let pediatriaPorPaciente = new Map();
 
     if (pacienteIds.length) {
         const { data: pacs, error: pErr } = await supabase
@@ -79,6 +106,7 @@ async function construirExport(clinicaId, pacienteIds, meta) {
                 ...serializarCodificacion(r), // Fase K: diagnósticos CIE-10 y prácticas
             });
         }
+        pediatriaPorPaciente = await pediatriaDe(clinicaId, pacienteIds);
     }
 
     const pacientesOut = pacientes.map((p) => {
@@ -96,6 +124,7 @@ async function construirExport(clinicaId, pacienteIds, meta) {
             nroAfiliado: p.nro_afiliado || null,
             plan: p.plan || null,
             registros: registrosPorPaciente.get(p.id) || [],
+            ...(pediatriaPorPaciente.has(p.id) ? { pediatria: pediatriaPorPaciente.get(p.id) } : {}),
         };
     });
 

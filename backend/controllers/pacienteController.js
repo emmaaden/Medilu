@@ -644,6 +644,8 @@ exports.getDataPacient = async (req, res) => {
 
         return res.status(200).json({
             fullName: [persona.nombre, persona.apellido].filter(Boolean).join(' '),
+            // Fase Z: id de la ficha (panel pediátrico).
+            pacienteId: paciente.id,
             // Fase Y: separados y la fecha ISO, para el formulario de edición.
             nombre: persona.nombre || '',
             apellido: persona.apellido || '',

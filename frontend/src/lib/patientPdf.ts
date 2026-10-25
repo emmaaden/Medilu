@@ -30,6 +30,8 @@ export type HistoryEntry = {
 
 export type Paciente = {
   fullName: string
+  /** Fase Z: id de la ficha (panel pediátrico; solo en el registro clínico). */
+  pacienteId?: number
   /** Fase Y: separados y la fecha ISO, para editar los datos (solo en el registro clínico). */
   nombre?: string
   apellido?: string
@@ -55,7 +57,7 @@ export type Paciente = {
 }
 
 /** Dibuja el logo horizontal (vectorial) con su esquina superior izquierda en (x, y), en mm. */
-function drawLogo(doc: jsPDF, x: number, y: number, height: number) {
+export function drawLogo(doc: jsPDF, x: number, y: number, height: number) {
   const k = height / LOGO_PDF.height
   for (const { rgb, d } of LOGO_PDF.parts) {
     const ops: { op: string; c: number[] }[] = []

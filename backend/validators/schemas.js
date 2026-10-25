@@ -483,4 +483,53 @@ module.exports = {
             alcanceIdObraSocial: z.number().int().positive().nullable().optional(),
         }),
     },
+
+    // Fase Z: pediatría (códigos de vacunas/hitos los valida utils/pediatria).
+    pediatria: (() => {
+        const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (formato YYYY-MM-DD)');
+        const n = (min, max) => z.number().min(min).max(max).nullable().optional();
+        const opcion = (valores) => z.enum(valores, 'Opción inválida').nullable().optional();
+        const estudio = opcion(['normal', 'alterada', 'pendiente', 'no_realizada']);
+        return {
+            perinatal: z.object({
+                edadGestacionalSem: z.number().int().min(20).max(45).nullable().optional(),
+                edadGestacionalDias: z.number().int().min(0).max(6).nullable().optional(),
+                pesoNacerG: z.number().int().min(200).max(8000).nullable().optional(),
+                tallaNacerCm: n(20, 70),
+                pcNacerCm: n(15, 50),
+                apgar1: z.number().int().min(0).max(10).nullable().optional(),
+                apgar5: z.number().int().min(0).max(10).nullable().optional(),
+                tipoParto: opcion(['vaginal', 'cesarea', 'forceps', 'otro']),
+                grupoSanguineo: z.string().trim().max(10).nullable().optional(),
+                pesquisaNeonatal: estudio,
+                otoemisiones: estudio,
+                lactancia: opcion(['exclusiva', 'mixta', 'formula', 'destete']),
+                notas: z.string().trim().max(2000).nullable().optional(),
+            }),
+            medicion: z.object({
+                fecha,
+                pesoKg: n(0.2, 250),
+                tallaCm: n(20, 230),
+                posicion: opcion(['acostado', 'parado']),
+                pcCm: n(15, 70),
+                notas: z.string().trim().max(500).nullable().optional(),
+            }).refine((m) => m.pesoKg != null || m.tallaCm != null || m.pcCm != null, 'Cargá al menos una medida'),
+            vacuna: z.object({
+                vacuna: z.string().trim().min(1).max(40),
+                vacunaOtra: z.string().trim().max(120).nullable().optional(),
+                dosis: z.string().trim().max(40).nullable().optional(),
+                fecha,
+                lote: z.string().trim().max(60).nullable().optional(),
+                lugar: z.string().trim().max(120).nullable().optional(),
+                notas: z.string().trim().max(500).nullable().optional(),
+            }),
+            hitos: z.object({
+                fecha: fecha.optional(),
+                hitos: z.array(z.object({
+                    hito: z.string().trim().min(1).max(40),
+                    estado: z.enum(['logrado', 'no_logrado'], 'Estado inválido'),
+                })).min(1).max(100),
+            }),
+        };
+    })(),
 };

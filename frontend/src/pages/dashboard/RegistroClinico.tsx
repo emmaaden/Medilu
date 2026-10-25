@@ -63,6 +63,9 @@ import {
 } from "@/lib/catalogos"
 import { ESTADO_AUDITORIA, type EstadoAuditoria } from "@/lib/auditoria"
 import { errorFechaNacimiento, FECHA_NAC_MIN, hoyAR } from "@/lib/fecha"
+import { TarjetaPediatrica } from "@/components/dashboard/pediatria/PanelPediatrico"
+import { esPediatrico, numero } from "@/components/dashboard/pediatria/comun"
+import { edadMeses } from "@/lib/pediatria/oms"
 
 const SEXO = [
   { value: "Masculino", label: "Masculino" },
@@ -103,6 +106,10 @@ export default function RegistroClinico() {
   // La especialidad odontológica se llama "Odontología" en la base; aceptamos
   // también "Dentista" y variantes de mayúsculas por robustez.
   const isOdonto = /odonto|dentista/i.test(area)
+  // Fase Z: panel pediátrico. Pediatría lo ve siempre; medicina general/familiar,
+  // con pacientes menores de 19 años.
+  const isPediatria = /pediatr/i.test(area)
+  const isGeneral = /m[eé]dic[oa] general|medicina familiar|cl[ií]nica m[eé]dica/i.test(area)
 
   return (
     <Container className="py-8 sm:py-12">
@@ -140,6 +147,8 @@ export default function RegistroClinico() {
       {view === "buscar" && (
         <BuscarPaciente
           isOdonto={isOdonto}
+          isPediatria={isPediatria}
+          isGeneral={isGeneral}
           profesional={user?.fullName || ""}
           area={area}
           onBack={() => setView("menu")}
@@ -1219,11 +1228,15 @@ function ListaPacientesClinica({
 /* --------------------------- Buscar / ficha --------------------------- */
 function BuscarPaciente({
   isOdonto,
+  isPediatria,
+  isGeneral,
   profesional,
   area,
   onBack,
 }: {
   isOdonto: boolean
+  isPediatria: boolean
+  isGeneral: boolean
   profesional: string
   area: string
   onBack: () => void
@@ -1242,6 +1255,9 @@ function BuscarPaciente({
   const [tratamiento, setTratamiento] = useState("")
   const [dientes, setDientes] = useState<Diente[]>([])
   const [codificacion, setCodificacion] = useState<Codificacion>(CODIFICACION_VACIA)
+  // Fase Z: medidas de la consulta (crean una medición de crecimiento al guardar).
+  const [medidas, setMedidas] = useState({ peso: "", talla: "", pc: "" })
+  const [versionPediatria, setVersionPediatria] = useState(0)
   const [saving, setSaving] = useState(false)
   // Fase K: edición de la cobertura del paciente.
   const [editCob, setEditCob] = useState<Cobertura | null>(null)
@@ -1292,6 +1308,29 @@ function BuscarPaciente({
     }
   }
 
+  async function guardarMedidas() {
+    if (!paciente?.pacienteId || !conPediatria) return
+    const pesoKg = numero(medidas.peso)
+    const tallaCm = numero(medidas.talla)
+    const pcCm = numero(medidas.pc)
+    if (pesoKg == null && tallaCm == null && pcCm == null) return
+    const nacimiento = paciente.fechaNacimientoIso || ""
+    const meses = nacimiento ? edadMeses(nacimiento, hoyAR()).meses : 999
+    try {
+      await api.post(`/pediatria/${paciente.pacienteId}/mediciones`, {
+        fecha: hoyAR(),
+        pesoKg,
+        tallaCm,
+        posicion: tallaCm != null ? (meses < 24 ? "acostado" : "parado") : null,
+        pcCm,
+      })
+      setMedidas({ peso: "", talla: "", pc: "" })
+      setVersionPediatria((v) => v + 1)
+    } catch (err) {
+      toast.error(err instanceof ApiError ? `La consulta se guardó, pero las medidas no: ${err.message}` : "Las medidas no se guardaron.")
+    }
+  }
+
   async function guardarConsulta() {
     if (!paciente) return
     if (!sintomas && !diagnostico && !tratamiento && !codificacion.diagnosticos.length && !codificacion.practicas.length) {
@@ -1316,6 +1355,7 @@ function BuscarPaciente({
       setDiagnostico("")
       setTratamiento("")
       setCodificacion(CODIFICACION_VACIA)
+      await guardarMedidas()
       // Refrescar ficha
       const data = await api.post<Paciente>("/pacient/get-data-pacient", {
         dni: paciente.dni,
@@ -1342,6 +1382,9 @@ function BuscarPaciente({
   )
 
   if (!paciente) return lista
+
+  const conPediatria =
+    !!paciente.pacienteId && (isPediatria || (isGeneral && esPediatrico(paciente.fechaNacimientoIso)))
 
   const datos: [string, React.ReactNode][] = [
     ["Teléfono", paciente.telefono],
@@ -1425,6 +1468,22 @@ function BuscarPaciente({
         </CardContent>
       </Card>
 
+      {/* Fase Z: crecimiento, vacunas, desarrollo, perinatal y dosis. */}
+      {conPediatria && (
+        <TarjetaPediatrica
+          key={`${paciente.pacienteId}-${versionPediatria}`}
+          pacienteId={paciente.pacienteId}
+          nombre={paciente.fullName}
+          nacimiento={paciente.fechaNacimientoIso || ""}
+          sexo={paciente.sexo || ""}
+          onCopiarTratamiento={(t) => {
+            setTratamiento((prev) => (prev.trim() ? `${prev.trim()}
+${t}` : t))
+            toast.success("Agregado al tratamiento de la nueva consulta")
+          }}
+        />
+      )}
+
       {/* Nueva consulta */}
       <Card className="mt-6">
         <CardContent className="p-4 sm:p-6">
@@ -1442,6 +1501,19 @@ function BuscarPaciente({
               <DictationTextarea id="s-tratamiento" rows={2} value={tratamiento} onValueChange={setTratamiento} />
             </Field>
             <CodificacionEditor value={codificacion} onChange={setCodificacion} dni={paciente.dni} />
+            {conPediatria && (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field label="Peso (kg)" htmlFor="s-peso">
+                  <Input id="s-peso" inputMode="decimal" value={medidas.peso} onChange={(e) => setMedidas((m) => ({ ...m, peso: e.target.value }))} />
+                </Field>
+                <Field label="Talla (cm)" htmlFor="s-talla">
+                  <Input id="s-talla" inputMode="decimal" value={medidas.talla} onChange={(e) => setMedidas((m) => ({ ...m, talla: e.target.value }))} />
+                </Field>
+                <Field label="Perímetro cefálico (cm)" htmlFor="s-pc">
+                  <Input id="s-pc" inputMode="decimal" value={medidas.pc} onChange={(e) => setMedidas((m) => ({ ...m, pc: e.target.value }))} />
+                </Field>
+              </div>
+            )}
             {isOdonto && (
               <div>
                 <p className="mb-2 text-sm font-medium">Odontograma</p>
