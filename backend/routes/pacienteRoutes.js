@@ -21,5 +21,8 @@ router.post('/codigo-vinculacion', validate(schemas.pacient.codigoVinculacion), 
 router.get('/emisor', pacienteController.getEmisor);
 // Fase K: cobertura del paciente (obra social del catálogo + afiliado + plan).
 router.put('/cobertura', validate(schemas.pacient.cobertura), pacienteController.actualizarCobertura);
+// Fase Y: corregir datos personales y listar los pacientes de la clínica (paginado).
+router.put('/datos', validate(schemas.pacient.editarDatos), pacienteController.editarDatos);
+router.get('/lista', validate(schemas.pacient.lista, 'query'), pacienteController.listaPacientes);
 
 module.exports = router;

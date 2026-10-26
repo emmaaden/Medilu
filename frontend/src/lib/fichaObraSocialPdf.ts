@@ -62,11 +62,17 @@ export function downloadFichaObraSocial({
   prestaciones,
   dientes,
   odontograma,
+  filas: totalFilas = null,
 }: {
   paciente: Paciente
   emisor: Emisor
   titulo: string
   prestaciones: PrestacionFicha[]
+  /**
+   * Renglones del registro, contando las prestaciones cargadas (nunca menos que ellas).
+   * null = completar la hoja con renglones en blanco.
+   */
+  filas?: number | null
   /** Estado del odontograma a informar (vacío = para completar a mano). */
   dientes: Diente[]
   /** Incluir el odontograma (fichas odontológicas). */
@@ -206,9 +212,14 @@ export function downloadFichaObraSocial({
   doc.setLineWidth(0.2)
   doc.setDrawColor(120, 120, 120)
   encabezadoTabla()
-  prestaciones.forEach((p, i) => {
+  // Con cantidad elegida, los renglones en blanco son los que faltan para llegar a ella.
+  const renglones: (PrestacionFicha | null)[] = [
+    ...prestaciones,
+    ...Array<null>(totalFilas === null ? 0 : Math.max(0, totalFilas - prestaciones.length)).fill(null),
+  ]
+  renglones.forEach((p, i) => {
     // Si no entra, sigue en otra hoja (la firma va al final de la última).
-    const quedan = prestaciones.length - i - 1
+    const quedan = renglones.length - i - 1
     const limite = quedan === 0 ? altoPagina - PIE : altoPagina - 15
     if (y + FILA > limite) {
       doc.addPage()
@@ -217,8 +228,8 @@ export function downloadFichaObraSocial({
     }
     fila(p)
   })
-  // Renglones en blanco hasta completar la hoja, para cargar a mano.
-  while (y + FILA <= altoPagina - PIE) fila(null)
+  // Sin cantidad elegida: renglones en blanco hasta completar la hoja, para cargar a mano.
+  if (totalFilas === null) while (y + FILA <= altoPagina - PIE) fila(null)
   doc.setDrawColor(0, 0, 0)
 
   // --- Pie: fecha de emisión + firma y sello ---

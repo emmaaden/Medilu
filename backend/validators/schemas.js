@@ -203,6 +203,24 @@ module.exports = {
         }),
         // Fase K: el profesional actualiza la cobertura del paciente.
         cobertura: z.object({ dni, ...cobertura }),
+        // Fase Y: el profesional corrige los datos personales del paciente. `dni` es el
+        // actual (identifica la ficha); `dniNuevo`, el corregido.
+        editarDatos: z.object({
+            dni,
+            dniNuevo: dni.optional(),
+            nombre,
+            apellido: z.string().trim().max(120).optional(),
+            telefono: z.string().max(30).optional(),
+            email: emailOpcional,
+            sexo: z.string().max(20).optional(),
+            direccion: z.string().max(200).optional(),
+            fechaNacimiento: z.string().max(40).optional(),
+        }),
+        // Fase Y: pacientes de la clínica (buscador del registro clínico).
+        lista: z.object({
+            q: z.string().trim().max(80).optional(),
+            page: paginaQuery,
+        }),
         getData: z.object({
             dni,
         }),

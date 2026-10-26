@@ -30,6 +30,10 @@ export type HistoryEntry = {
 
 export type Paciente = {
   fullName: string
+  /** Fase Y: separados y la fecha ISO, para editar los datos (solo en el registro clínico). */
+  nombre?: string
+  apellido?: string
+  fechaNacimientoIso?: string
   telefono: string
   email: string
   dni: string

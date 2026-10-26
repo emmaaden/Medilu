@@ -1,13 +1,13 @@
-[  0.0s] ¿Todavía das turnos por teléfono, entre paciente y paciente?
-[  4.9s] La agenda en un cuaderno, las fichas en un cajón y los turnos en tu WhatsApp.
-[ 10.6s] Con Medilu, tu consultorio entero entra en una app.
-[ 14.8s] Tus pacientes sacan turno solos, desde el celular, y les llega la confirmación por mail.
-[ 21.1s] En la consulta, dictás la historia clínica y queda guardada en la ficha, con diagnóstico y obra social.
-[ 28.4s] Hacés certificados con tu firma, y el paciente los recibe en su cuenta, junto con sus estudios.
-[ 35.2s] Sirve para cualquier especialidad, y si sos odontólogo, trae odontograma.
-[ 41.0s] Y para tus pacientes, Medilu es gratis. Siempre.
-[ 46.3s] Contratarlo es simple: creás tu cuenta de profesional, lo probás 14 días con todo, sin tarjeta, y elegís tu plan desde el panel.
-[ 55.4s] Hay planes desde $14.900 por mes, con IVA incluido.
-[ 60.9s] Probalo gratis: escribinos por WhatsApp y empezá hoy. Medilu: tu consultorio entero, en una app.
+[  0.0s] ¿Todavía das turnos por teléfono a tus pacientes?
+[  4.4s] La agenda en un cuaderno, las fichas en un cajón y los turnos en tu WhatsApp.
+[ 10.2s] Con Medilu, tu consultorio entero entra en una app.
+[ 14.7s] Tus pacientes sacan turno solos desde el celular y les llega la confirmación por mail.
+[ 20.5s] En la consulta, dictás la historia clínica y queda guardada en la ficha, con diagnóstico y obra social.
+[ 28.2s] Hacés certificados con tu firma, y el paciente los recibe en su cuenta junto con sus estudios.
+[ 34.9s] Sirve para cualquier especialidad, y si sos odontólogo, trae odontograma.
+[ 40.9s] Y para tus pacientes, Medilu es gratis.
+[ 45.0s] Contratarlo es simple: creás tu cuenta de profesional, lo probás 14 días con todo, sin tarjeta, y elegís tu plan desde el panel.
+[ 54.4s] Hay planes desde $14.900 por mes, con IVA incluido.
+[ 60.2s] Probalo gratis: escribinos por WhatsApp y empezá hoy. Medilu: tu consultorio entero, en una app.
 
-Duración: 70.8 s · Voz: es-AR-ElenaNeural
+Duración: 70.4 s · Voz: es-UY-ValentinaNeural

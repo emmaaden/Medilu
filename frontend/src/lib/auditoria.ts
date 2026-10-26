@@ -51,6 +51,7 @@ export const ACCION_LABEL: Record<string, string> = {
   editar_cobertura: "Actualizó la cobertura del paciente",
   codigo_vinculacion: "Pidió el código de vinculación",
   vincular_historia: "El paciente vinculó su historia a su cuenta",
+  editar_datos_paciente: "Corrigió los datos del paciente",
 }
 
 export type Revision = {
