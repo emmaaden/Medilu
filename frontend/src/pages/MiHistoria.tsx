@@ -20,6 +20,8 @@ import { api, ApiError } from "@/lib/api"
 import { useUser } from "@/hooks/useUser"
 import { downloadPatientHistoryPdf, type Paciente } from "@/lib/patientPdf"
 import { Odontogram } from "@/components/dashboard/Odontogram"
+import { TarjetaPediatrica } from "@/components/dashboard/pediatria/PanelPediatrico"
+import type { DatosPediatricos } from "@/lib/pediatria/tipos"
 import { CodificacionResumen } from "@/components/form/CodificacionEditor"
 import { ACCION_LABEL } from "@/lib/auditoria"
 import { formatFechaHora } from "@/lib/fecha"
@@ -31,6 +33,33 @@ const ROL_LABEL: Record<string, string> = {
   profesional: "Profesional",
   auditor: "Auditoría médica",
   recepcion: "Recepción",
+}
+
+/** Fase Z: curvas de crecimiento, vacunas y desarrollo (solo lectura, si hay datos). */
+function CrecimientoYVacunas() {
+  const [datos, setDatos] = useState<
+    (DatosPediatricos & { nombre: string; sexo: string; fechaNacimientoIso: string }) | null
+  >(null)
+
+  useEffect(() => {
+    api
+      .get<DatosPediatricos & { nombre: string; sexo: string; fechaNacimientoIso: string }>("/api/mi-cuenta/pediatria")
+      .then(setDatos)
+      .catch(() => setDatos(null))
+  }, [])
+
+  if (!datos || !datos.fechaNacimientoIso) return null
+  const hay = datos.perinatal || datos.mediciones.length || datos.vacunas.length || datos.hitos.length
+  if (!hay) return null
+  return (
+    <TarjetaPediatrica
+      nombre={datos.nombre}
+      nacimiento={datos.fechaNacimientoIso}
+      sexo={datos.sexo}
+      datos={datos}
+      readOnly
+    />
+  )
 }
 
 /** Fase K: quién accedió a la historia clínica del paciente (bitácora). */
@@ -306,6 +335,8 @@ export default function MiHistoria() {
                   </dl>
                 </CardContent>
               </Card>
+
+              <CrecimientoYVacunas />
 
               <h3 className="mt-8 flex items-center gap-2 text-lg font-semibold">
                 <FileText className="size-5 text-primary" />

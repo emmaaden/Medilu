@@ -9,6 +9,7 @@ const planes = require('../utils/planes');
 const suscripcionMp = require('../utils/suscripcionMp');
 const mp = require('../utils/mercadopago');
 const { errorDb } = require('../utils/errores');
+const vista_ = require('../utils/vista');
 
 // GET /plataforma/clinicas — todas las clínicas con su suscripción y uso.
 exports.listarClinicas = async (req, res) => {
@@ -222,5 +223,63 @@ exports.aplicarPrecios = async (req, res) => {
         if (err instanceof suscripcionMp.ErrorNegocio) return res.status(err.status).json({ error: err.message });
         console.error('Error en plataforma/aplicar-precios:', err);
         return res.status(500).json({ error: 'No se pudieron programar los nuevos precios.' });
+    }
+};
+
+// ---------------------------------------------------------------------------
+// "Ver como" (Fase Z): ver el sistema como otro rol/especialidad (utils/vista).
+// ---------------------------------------------------------------------------
+
+// POST /plataforma/vista { rol, especialidad?, pacienteId?, alcanceIdObraSocial? }
+exports.entrarVista = async (req, res) => {
+    try {
+        const vista = await vista_.entrarEnVista(req, req.body);
+        return res.json({ vista });
+    } catch (err) {
+        if (err.status) return res.status(err.status).json({ error: err.message });
+        console.error('Error en plataforma/vista:', err);
+        return res.status(500).json({ error: 'No se pudo cambiar la vista.' });
+    }
+};
+
+// DELETE /plataforma/vista: vuelve a la cuenta real.
+exports.salirVista = (req, res) => {
+    vista_.salirDeVista(req);
+    return res.json({ ok: true });
+};
+
+// GET /plataforma/vista/pacientes?q= — fichas de la clínica activa (real) para elegir
+// a quién ver en la vista de paciente.
+exports.pacientesVista = async (req, res) => {
+    try {
+        const clinicaId = vista_.usuarioReal(req).clinicaId;
+        if (!clinicaId) return res.status(400).json({ error: 'Elegí una clínica primero.' });
+        let query = supabase
+            .from('persona')
+            .select('nombre, apellido, dni, fecha_nacimiento, paciente!inner(id)')
+            .eq('clinica_id', clinicaId);
+        const palabras = String(req.query.q || '')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase().split(/\s+/)
+            .map((p) => p.replace(/[^a-z0-9]/g, ''))
+            .filter(Boolean).slice(0, 4);
+        for (const p of palabras) {
+            query = query.or(`nombre.ilike.%${p}%,apellido.ilike.%${p}%,dni.ilike.%${p}%`);
+        }
+        const { data, error } = await query
+            .order('apellido', { ascending: true, nullsFirst: false })
+            .limit(20);
+        if (error) throw error;
+        return res.json({
+            pacientes: (data || []).map((p) => ({
+                pacienteId: (Array.isArray(p.paciente) ? p.paciente[0] : p.paciente).id,
+                nombre: [p.nombre, p.apellido].filter(Boolean).join(' '),
+                dni: p.dni,
+                fechaNacimiento: p.fecha_nacimiento,
+            })),
+        });
+    } catch (err) {
+        console.error('Error en plataforma/vista/pacientes:', err);
+        return res.status(500).json({ error: 'No se pudieron cargar los pacientes.' });
     }
 };

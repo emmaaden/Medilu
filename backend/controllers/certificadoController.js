@@ -299,7 +299,7 @@ exports.misCertificados = async (req, res) => {
             .from('certificado_medico')
             .select('id, tipo, motivo, diagnostico, indicaciones, dias_reposo, paciente_nombre, profesional_nombre, archivo_mime, emitido_en')
             // Fase O: los de todas sus fichas; solo los propios aunque la cuenta sea staff.
-            .in('id_paciente', await misPacienteIds(req.session.user.id))
+            .in('id_paciente', await misPacienteIds(req.session.user))
             .order('emitido_en', { ascending: false });
         if (error) return errorDb(res, error);
 

@@ -17,6 +17,7 @@ const publicRoutes = require('./routes/publicRoutes'); // Fase 1: /professionals
 const clinicaRoutes = require('./routes/clinicaRoutes'); // Fase 2: gestión de clínica
 const adminRoutes = require('./routes/adminRoutes'); // Fase B: administración (miembros)
 const turnosRoutes = require('./routes/turnosRoutes'); // Fase 3: turnos del paciente (/api/turnos)
+const pediatriaRoutes = require('./routes/pediatriaRoutes'); // Fase Z: pediatría
 const miCuentaRoutes = require('./routes/miCuentaRoutes'); // Fase 3: autogestión del paciente (/api/mi-cuenta)
 const certificadoRoutes = require('./routes/certificadoRoutes'); // Fase C: certificados médicos
 const hcRoutes = require('./routes/hcRoutes'); // Fase D: export/import de historias clínicas
@@ -47,6 +48,7 @@ const schemas = require('./validators/schemas');
 const planes = require('./utils/planes');
 const { soloLectura } = require('./middleware/plan');
 const { sesionVigente } = require('./middleware/sesionVigente');
+const { vistaSoloLectura, vistaActiva } = require('./utils/vista'); // Fase Z: "Ver como"
 const { manejadorErrores } = require('./utils/errores');
 
 const app = express();
@@ -211,6 +213,8 @@ app.use(session({
 // Auditoría 2026-10-15 (#7): la sesión del staff se revalida contra sus membresías
 // (baja o cambio de rol se aplican sin esperar a que venza la cookie).
 app.use(sesionVigente);
+// Fase Z: "Ver como paciente" (plataforma) es solo lectura.
+app.use(vistaSoloLectura);
 
 // ---------------------------------------------------------------------------
 // Estáticos y rutas
@@ -237,7 +241,7 @@ if (isProd) {
 // /admin (dar de baja miembros para volver al cupo) y todo lo del paciente.
 app.use([
     '/hour', '/pacient', '/clinica', '/certificados', '/hc', '/staff',
-    '/dictado', '/auditoria', '/catalogos', '/autorizaciones',
+    '/dictado', '/auditoria', '/catalogos', '/autorizaciones', '/pediatria',
 ], soloLectura);
 
 app.use('/auth', authRoutes);
@@ -250,6 +254,7 @@ app.use('/clinica', clinicaRoutes); // Fase 2: gestión de clínica (rol profesi
 app.use('/admin', adminRoutes); // Fase B: administración de la clínica (solo admin)
 app.use('/certificados', certificadoRoutes); // Fase C: certificados médicos
 app.use('/hc', hcRoutes); // Fase D: export/import de historias clínicas
+app.use('/pediatria', pediatriaRoutes); // Fase Z: crecimiento, vacunas, desarrollo, perinatal
 app.use('/staff', staffRoutes); // Fase E: gestión de turnos por el staff (recepción/profesional/admin)
 app.use('/estudios', estudioRoutes); // Fase I: repositorio de estudios del paciente + compartir
 app.use('/dictado', dictadoRoutes); // dictado por voz (proxy al whisper.cpp local)
@@ -348,6 +353,8 @@ app.get('/api/user', async (req, res) => {
         plan,
         // Fase L: equipo de la plataforma (activa planes y edita precios).
         esPlataforma: planes.esAdminPlataforma(u.email),
+        // Fase Z: "Ver como" activo (rol/especialidad simulados) o null.
+        vista: (vistaActiva(req) && u.vista) || null,
     });
 });
 

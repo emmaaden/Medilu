@@ -34,6 +34,7 @@ const {
     SELECT_CODIFICACION,
 } = require('../utils/codificacion');
 const { parseFechaNacimiento, calcEdad } = require('../utils/fechaNacimiento');
+const { areaEfectiva } = require('../utils/vista');
 
 // Mensaje uniforme cuando la sesión no tiene (o perdió) el token de Supabase.
 const ERR_SESION = { status: 401, body: { error: 'Tu sesión expiró. Iniciá sesión de nuevo.' } };
@@ -94,7 +95,8 @@ async function getProfContext(req) {
             : '',
     ]);
 
-    return { idProfesional: idRole || null, nombre: nombre || '', area, clinicaId: req.session.user.clinicaId || null };
+    // Fase Z: con "Ver como" la especialidad simulada es el área de la consulta.
+    return { idProfesional: idRole || null, nombre: nombre || '', area: areaEfectiva(req, area), clinicaId: req.session.user.clinicaId || null };
 }
 
 // Inserta el registro clínico + el estado del odontograma (si viene) + la
@@ -642,6 +644,8 @@ exports.getDataPacient = async (req, res) => {
 
         return res.status(200).json({
             fullName: [persona.nombre, persona.apellido].filter(Boolean).join(' '),
+            // Fase Z: id de la ficha (panel pediátrico).
+            pacienteId: paciente.id,
             // Fase Y: separados y la fecha ISO, para el formulario de edición.
             nombre: persona.nombre || '',
             apellido: persona.apellido || '',

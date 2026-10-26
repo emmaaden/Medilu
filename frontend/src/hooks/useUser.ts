@@ -34,6 +34,17 @@ export type CurrentUser = {
   plan: PlanSesion | null
   // Fase L: equipo de la plataforma (activa planes y edita precios).
   esPlataforma: boolean
+  // Fase Z: "Ver como" de la plataforma (rol/especialidad simulados) o null.
+  vista: VistaSesion | null
+}
+
+export type RolVista = "admin" | "profesional" | "recepcion" | "auditor" | "paciente"
+
+export type VistaSesion = {
+  rol: RolVista
+  especialidad: string | null
+  pacienteId: number | null
+  pacienteNombre: string | null
 }
 
 /**

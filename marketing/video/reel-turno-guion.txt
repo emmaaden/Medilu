@@ -1,0 +1,8 @@
+[  0.0s] Once y catorce de la noche. Una paciente acaba de sacar turno con vos.
+[  6.5s] Eligió tu clínica, tu nombre y el martes a las nueve y media.
+[ 11.7s] Le llegó la confirmación por mail, y un día antes le llega el recordatorio.
+[ 17.2s] Y si no puede venir, lo cancela desde ese mismo mail.
+[ 22.0s] A la mañana, el turno ya está en tu agenda. Nadie atendió el teléfono.
+[ 28.6s] Probalo 14 días gratis. Comentá PRUEBA y te escribimos.
+
+Duración: 36.4 s · Voz: es-UY-ValentinaNeural

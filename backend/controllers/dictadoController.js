@@ -7,6 +7,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { armarPrompt, limpiar } = require('../utils/dictado');
+const { areaEfectiva } = require('../utils/vista');
 require('dotenv').config();
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
@@ -72,7 +73,7 @@ exports.transcribir = async (req, res) => {
         return res.status(400).json({ error: 'Audio vacío o inválido.' });
     }
 
-    const especialidad = await especialidadDe(req.session.user.idRole);
+    const especialidad = areaEfectiva(req, await especialidadDe(req.session.user.idRole));
     const contexto = contextoDe(req);
 
     const form = new FormData();

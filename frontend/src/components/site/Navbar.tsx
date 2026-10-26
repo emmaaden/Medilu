@@ -14,6 +14,7 @@ import {
 import { Logo } from "./Logo"
 import { NAV_LINKS, HELP_URL } from "@/lib/site"
 import { useUser } from "@/hooks/useUser"
+import { VistaBanner } from "@/components/VistaBanner"
 import { api } from "@/lib/api"
 import { ThemeToggle } from "@/components/site/ThemeToggle"
 
@@ -50,6 +51,8 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/70 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
+      {/* Fase Z: "Ver como paciente" de la plataforma. */}
+      <VistaBanner vista={user?.vista} />
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <Logo />
 

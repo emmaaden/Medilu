@@ -1,4 +1,4 @@
-"""Video ilustrativo de Medilu con voz en off (Reel vertical 1080×1920, ~55 s).
+"""Videos de Medilu con voz en off (Reels verticales 1080×1920).
 
 Cada escena es HTML con la marca de la app; la locución se genera con una voz neural
 rioplatense (edge-tts) y las animaciones y los subtítulos se sincronizan con el tiempo de
@@ -6,8 +6,10 @@ cada palabra. Chrome renderiza cuadro a cuadro y ffmpeg arma el MP4.
 
 Requisitos (una vez):  pip install edge-tts playwright imageio-ffmpeg
                        + Chrome instalado + `npm install` en frontend/ (fuente e íconos)
-Uso:                   python build_video.py
-Salida:                medilu-video.mp4, portada.png y guion.txt en esta carpeta.
+Uso:                   python build_video.py [reel] [--muestras]
+Reels (ver REELS):     medilu-video  video ilustrativo fijado (semana 1, por defecto)
+                       reel-turno    «turno a las 23:14» (semana 2)
+Salida:                el MP4, la portada y el guion de ese reel, en esta carpeta.
 """
 import asyncio, html, json, pathlib, re, subprocess, sys
 
@@ -25,7 +27,7 @@ FPS = 30
 W, H = 1080, 1920
 LEAD, TAIL, FINAL = 0.3, 0.4, 2.2  # silencio antes/después de cada locución y al cierre
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
-TMP = ROOT / ".tmp"
+
 
 
 def C(texto, dicho=None):
@@ -167,6 +169,61 @@ ESCENAS = [
         <p class="a rise center" style="--d:{c[2] + .5}s">{HANDLE} · link en la bio</p>"""),
 ]
 
+# Semana 2 · «Turno a las 23:14»: el turno online visto por el profesional (datos ficticios).
+ESCENAS_TURNO = [
+    dict(dark=True, vo=[C("Once y catorce de la noche."), C("Una paciente acaba de sacar turno con vos.")],
+         html=lambda c: f"""
+        <div class="a pop clock" style="--d:0s">23:14</div>
+        <h2 class="a rise center bal" style="--d:{c[1]}s">Una paciente acaba de sacar turno con vos</h2>"""),
+
+    dict(vo=[C("Eligió tu clínica,"), C("tu nombre"), C("y el martes a las nueve y media.")], html=lambda c: f"""
+        <div class="a rise phone" style="--d:0s">
+          <div class="a rise pick-row" style="--d:{c[0]}s">{icon("building-2")}<div><span>Clínica</span><b>Consultorio Centro</b></div></div>
+          <div class="a rise pick-row" style="--d:{c[1]}s">{icon("stethoscope")}<div><span>Profesional</span><b>Dr. Martín Ruiz</b></div></div>
+          <div class="a rise days" style="--d:{c[2]}s"><span>Lun 2</span><span class="on">Mar 3</span><span>Mié 4</span></div>
+          <div class="a rise slots" style="--d:{c[2] + .2}s"><span>9:00</span><span class="pick" style="--d:{c[2] + 1.2}s">9:30</span><span>10:00</span></div>
+        </div>"""),
+
+    dict(vo=[C("Le llegó la confirmación por mail,"), C("y un día antes le llega el recordatorio.")], html=lambda c: f"""
+        <div class="a rise kicker" style="--d:0s">Por mail</div>
+        <div class="mails">
+          <div class="a slide toast" style="--d:{c[0] + .2}s">{icon("mail-check")}<div><b>Turno confirmado</b><span>Martes 3 · 9:30</span></div></div>
+          <div class="a slide toast" style="--d:{c[1] + .2}s">{icon("bell")}<div><b>Recordatorio</b><span>Mañana 9:30 · Consultorio Centro</span></div></div>
+        </div>"""),
+
+    dict(vo=[C("Y si no puede venir,"), C("lo cancela desde ese mismo mail.")], html=lambda c: f"""
+        <div class="a rise card big-card" style="--d:0s">
+          <div class="mail-t">{icon("mail")} Tu turno en Medilu</div>
+          <div class="row-v"><span>Martes 3 · 9:30</span><b>Dr. Martín Ruiz</b></div>
+          <div class="a pop btn-o" style="--d:{c[1]}s">{icon("calendar-x")} Cancelar turno</div>
+        </div>
+        <p class="a rise center muted" style="--d:{c[1] + .5}s">Sin llamarte y sin mandarte un WhatsApp</p>"""),
+
+    dict(vo=[C("A la mañana, el turno ya está en tu agenda."), C("Nadie atendió el teléfono.")], html=lambda c: f"""
+        <div class="a rise kicker" style="--d:0s">Tu agenda</div>
+        <div class="a rise card agenda" style="--d:.1s">
+          <div class="ag-t"><b>Martes 3</b><span>3 turnos</span></div>
+          <div class="ag-row"><i>9:00</i><div class="ag-slot"><b>Carlos Pérez</b><span>Control</span></div></div>
+          <div class="ag-row"><i>9:30</i><div class="a pop ag-slot new" style="--d:.6s"><b>Laura Méndez</b><span class="pill turno">{icon("globe")} Online</span></div></div>
+          <div class="ag-row"><i>10:00</i><div class="ag-slot"><b>Ana Torres</b><span>Primera vez</span></div></div>
+        </div>
+        <div class="a pop okline" style="--d:{c[1]}s">{icon("phone-off")} Cero llamadas</div>"""),
+
+    dict(dark=True, vo=[C(f"Probalo {DIAS_PRUEBA} días gratis.", "Probalo catorce días gratis."), C("Comentá PRUEBA y te escribimos.")],
+         html=lambda c: f"""
+        <div class="a pop" style="--d:0s">{iso("hero-iso sm", True)}</div>
+        <h2 class="a rise center" style="--d:{c[0]}s">Probalo {DIAS_PRUEBA} días gratis</h2>
+        <div class="a pop kw" style="--d:{c[1] + .2}s">Comentá PRUEBA</div>
+        <p class="a rise center" style="--d:{c[1] + .8}s">{HANDLE} · sin tarjeta</p>"""),
+]
+
+# nombre → escenas, archivos de salida y escena de la portada
+REELS = {
+    "medilu-video": dict(escenas=ESCENAS, mp4="medilu-video.mp4", portada="portada.png", guion="guion.txt", escena_portada=2),
+    "reel-turno": dict(escenas=ESCENAS_TURNO, mp4="reel-turno.mp4", portada="reel-turno-portada.png",
+                       guion="reel-turno-guion.txt", escena_portada=0),
+}
+
 CSS = f"""
 {FONT_FACE}
 :root {{ {TOKENS} }}
@@ -199,6 +256,7 @@ h1 {{ font-size: 104px; line-height: 1.04; font-weight: 700; letter-spacing: -.0
 h2 {{ font-size: 88px; line-height: 1.05; font-weight: 700; letter-spacing: -.03em; }}
 p {{ font-size: 48px; line-height: 1.3; }}
 .center {{ text-align: center; }}
+.bal {{ text-wrap: balance; }}
 .muted {{ color: var(--muted); }}
 .kicker {{ font-size: 38px; font-weight: 600; color: var(--primary); text-transform: uppercase; letter-spacing: .08em; }}
 .card {{ background: var(--card); color: var(--fg); border: 3px solid var(--border); border-radius: 40px;
@@ -278,6 +336,34 @@ p {{ font-size: 48px; line-height: 1.3; }}
 .mini em {{ font-style: normal; font-size: 48px; font-weight: 700; color: var(--primary); margin-top: 14px; }}
 .wa {{ display: inline-flex; align-items: center; gap: 26px; padding: 36px 60px; border-radius: 36px; background: var(--wa); color: #fff; font-size: 76px; font-weight: 700; }}
 .wa svg {{ width: 84px; height: 84px; }}
+/* Reel «turno a las 23:14» */
+.clock {{ font-size: 260px; font-weight: 700; letter-spacing: -.05em; line-height: 1; color: var(--turno-on); font-variant-numeric: tabular-nums; }}
+.pick-row {{ display: flex; align-items: center; gap: 26px; padding: 26px 30px; border-radius: 26px; background: var(--accent); }}
+.pick-row svg {{ width: 56px; height: 56px; color: var(--primary); }}
+.pick-row span {{ display: block; font-size: 28px; color: var(--muted); }}
+.pick-row b {{ font-size: 40px; }}
+.mails {{ display: grid; gap: 30px; width: 100%; }}
+.mails .toast {{ padding: 40px 44px; }}
+.mails .toast b {{ font-size: 48px; }}
+.mails .toast span {{ font-size: 36px; }}
+.mail-t {{ display: flex; align-items: center; gap: 20px; font-size: 44px; font-weight: 700; }}
+.mail-t svg {{ width: 56px; height: 56px; color: var(--primary); }}
+.row-v {{ display: flex; flex-direction: column; gap: 8px; padding: 30px 0; border-top: 3px solid var(--border); border-bottom: 3px solid var(--border); }}
+.row-v span {{ font-size: 54px; font-weight: 700; letter-spacing: -.02em; }}
+.row-v b {{ font-size: 38px; font-weight: 500; color: var(--muted); }}
+.btn-o {{ display: flex; align-items: center; justify-content: center; gap: 18px; height: 116px; border-radius: 26px; border: 3px solid var(--border); font-size: 42px; font-weight: 600; }}
+.btn-o svg {{ width: 48px; height: 48px; color: oklch(0.58 0.2 25); }}
+.agenda {{ width: 100%; padding: 44px; display: flex; flex-direction: column; gap: 22px; }}
+.ag-t {{ display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 14px; }}
+.ag-t b {{ font-size: 50px; letter-spacing: -.02em; }}
+.ag-t span {{ font-size: 34px; color: var(--muted); }}
+.ag-row {{ display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 20px; }}
+.ag-row i {{ font-style: normal; font-size: 36px; font-weight: 600; color: var(--muted); }}
+.ag-slot {{ display: flex; justify-content: space-between; align-items: center; padding: 28px 30px; border-radius: 24px; background: var(--accent); }}
+.ag-slot b {{ font-size: 40px; }}
+.ag-slot > span {{ font-size: 32px; color: var(--muted); }}
+.ag-slot.new {{ background: var(--card); border: 4px solid var(--turno); box-shadow: 0 20px 40px -24px oklch(0.4 0.1 192 / .6); }}
+.kw {{ padding: 30px 64px; border-radius: 32px; background: var(--on-primary); color: var(--primary); font-size: 80px; font-weight: 800; letter-spacing: -.02em; }}
 /* Subtítulos: por encima de la zona que tapa la interfaz de Reels */
 .caps {{ position: absolute; z-index: 100; left: 70px; right: 70px; top: 1380px; height: 260px; display: grid; place-items: center; }}
 .cap {{ grid-area: 1 / 1; text-align: center; font-size: 56px; line-height: 1.32; font-weight: 600; opacity: 0;
@@ -319,8 +405,11 @@ def duracion(mp3):
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
-def main(muestras=False):
-    TMP.mkdir(exist_ok=True)
+def main(nombre="medilu-video", muestras=False):
+    reel = REELS[nombre]
+    ESCENAS = reel["escenas"]
+    TMP = ROOT / ".tmp" / nombre
+    TMP.mkdir(parents=True, exist_ok=True)
     t, escenas_html, caps, audios, guion = 0.0, [], [], [], []
     for i, esc in enumerate(ESCENAS):
         dicho = " ".join(d for _, d in esc["vo"])
@@ -347,7 +436,7 @@ def main(muestras=False):
         guion.append(f"[{t0:5.1f}s] " + " ".join(tx for tx, _ in esc["vo"]))
         t = t1
     total = t
-    (ROOT / "guion.txt").write_text("\n".join(guion) + f"\n\nDuración: {total:.1f} s · Voz: {VOZ}\n", encoding="utf-8")
+    (ROOT / reel["guion"]).write_text("\n".join(guion) + f"\n\nDuración: {total:.1f} s · Voz: {VOZ}\n", encoding="utf-8")
 
     page_html = (f'<!doctype html><html lang="es"><head><meta charset="utf-8"><style>{CSS}</style></head><body>'
                  f'{"".join(escenas_html)}<div class="caps">{"".join(caps)}</div>'
@@ -378,7 +467,7 @@ def main(muestras=False):
         print(f"muestras en {TMP} ({total:.1f} s)")
         return
 
-    out = ROOT / "medilu-video.mp4"
+    out = ROOT / reel["mp4"]
     frames = int(total * FPS)
     enc = subprocess.Popen([FFMPEG, "-y", "-f", "image2pipe", "-framerate", str(FPS), "-c:v", "mjpeg", "-i", "-",
                             "-i", str(wav), "-vf", "scale=in_range=full:out_range=tv,format=yuv420p", "-color_range", "tv",
@@ -395,10 +484,10 @@ def main(muestras=False):
             enc.stdin.write(pg.screenshot(type="jpeg", quality=93))
             if f % (FPS * 5) == 0:
                 print(f"  {f / FPS:4.0f}/{total:.0f} s", flush=True)
-        # Portada para el Reel: la escena de la marca, ya armada.
-        t_marca = float(re.findall(r"--t0:([\d.]+)s;--t1:([\d.]+)s", escenas_html[2])[0][1]) - .6
-        pg.evaluate(f"seek({t_marca})")
-        pg.screenshot(path=str(ROOT / "portada.png"))
+        # Portada para el Reel: la escena elegida, ya armada.
+        t_portada = float(re.findall(r"--t0:([\d.]+)s;--t1:([\d.]+)s", escenas_html[reel["escena_portada"]])[0][1]) - .6
+        pg.evaluate(f"seek({t_portada}); document.querySelector('.caps').style.display = 'none'")  # sin subtítulo
+        pg.screenshot(path=str(ROOT / reel["portada"]))
         br.close()
     enc.stdin.close()
     enc.wait()
@@ -406,4 +495,5 @@ def main(muestras=False):
 
 
 if __name__ == "__main__":
-    main(muestras="--muestras" in sys.argv)
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    main(args[0] if args else "medilu-video", muestras="--muestras" in sys.argv)

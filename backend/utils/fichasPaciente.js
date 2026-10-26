@@ -37,9 +37,36 @@ async function fichasPaciente(authId) {
         });
 }
 
-// ids de paciente de la cuenta (para filtrar turnos, estudios, certificados, etc.).
-async function misPacienteIds(authId) {
-    return (await fichasPaciente(authId)).map((f) => f.paciente.id);
+// Fichas del paciente de la SESIÓN. Con "Ver como paciente" (Fase Z, utils/vista) la
+// sesión apunta a una sola ficha elegida por la plataforma, no a la cuenta de Auth.
+async function fichasDeSesion(user) {
+    const pacienteId = user && user.vista && user.vista.pacienteId;
+    if (!pacienteId) return fichasPaciente(user && user.id);
+    const { data: pac, error: errPac } = await supabase
+        .from('paciente')
+        .select('id_persona')
+        .eq('id', pacienteId)
+        .maybeSingle();
+    if (errPac) throw errPac;
+    if (!pac) return [];
+    const { data, error } = await supabase
+        .from('persona')
+        .select(SELECT_FICHA)
+        .eq('id', pac.id_persona);
+    if (error) throw error;
+    return (data || [])
+        .filter((p) => p.paciente && p.paciente[0])
+        .map((p) => ({
+            persona: p,
+            paciente: p.paciente[0],
+            clinicaId: p.clinica_id || null,
+            clinica: (p.clinica && p.clinica.nombre) || null,
+        }));
 }
 
-module.exports = { fichasPaciente, misPacienteIds };
+// ids de paciente de la sesión (para filtrar turnos, estudios, certificados, etc.).
+async function misPacienteIds(user) {
+    return (await fichasDeSesion(user)).map((f) => f.paciente.id);
+}
+
+module.exports = { fichasPaciente, fichasDeSesion, misPacienteIds };

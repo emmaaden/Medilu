@@ -4,6 +4,7 @@ const { getMembresiasActivas, roleSinProfesional } = require('../utils/membresia
 const { columnasCobertura } = require('../utils/cobertura');
 const planes = require('../utils/planes');
 const { fichasPaciente } = require('../utils/fichasPaciente');
+const { areaEfectiva, salirDeVista } = require('../utils/vista');
 const { sendMail } = require('../utils/mailer');
 const { vencimientoLocal } = require('../middleware/userSupabase');
 const { invalidarMembresias } = require('../middleware/sesionVigente');
@@ -511,6 +512,7 @@ exports.misPerfiles = async (req, res) => {
 // con ese perfil. Se recalcula desde la base: no se confía en la sesión ni en el cliente.
 exports.selectPerfil = async (req, res) => {
     try {
+        salirDeVista(req); // Fase Z: cambiar de perfil vuelve a la cuenta real
         const u = req.session.user;
         const auth = { id: u.id, email: u.email };
         const { staff, fichas } = await perfilesDeCuenta(u.id);
@@ -713,6 +715,7 @@ exports.crearConsultorio = async (req, res) => {
 // membresía ACTIVA en la clínica pedida (no se confía en el cliente).
 exports.selectClinica = async (req, res) => {
     try {
+        salirDeVista(req); // Fase Z: cambiar de clínica vuelve a la cuenta real
         const personaId = req.session.user?.personaId;
         const { clinicaId } = req.body;
         if (!personaId) return res.status(403).json({ error: 'Sesión sin identidad.' });
@@ -772,7 +775,7 @@ exports.getArea = async (req, res) => {
             }
             if (data && data[0] && data[0].id_especialidad) area = data[0].id_especialidad.nombre;
         }
-        return res.json({ area });
+        return res.json({ area: areaEfectiva(req, area) });
     } catch (err) {
         console.error('Error en get-area:', err);
         return res.status(500).json({ error: 'Error al obtener el área' });

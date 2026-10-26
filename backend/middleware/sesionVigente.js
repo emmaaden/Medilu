@@ -15,6 +15,7 @@
 
 const { supabase } = require('../config/supabaseClient');
 const { getMembresiasActivas, roleSinProfesional } = require('../utils/membresias');
+const { usuarioReal, vistaActiva, salirDeVista } = require('../utils/vista');
 
 const SESION_TTL_MS = 60 * 1000;
 const ROLES_STAFF = ['profesional', 'recepcion', 'auditor'];
@@ -44,7 +45,9 @@ function revocar(req, res) {
 }
 
 async function sesionVigente(req, res, next) {
-    const u = req.session && req.session.isAuthenticated && req.session.user;
+    // Fase Z ("Ver como"): con una vista activa se valida la identidad REAL
+    // (vistaReal) y se actualiza esa; session.user tiene los valores simulados.
+    const u = req.session && req.session.isAuthenticated && usuarioReal(req);
     if (!u || !ROLES_STAFF.includes(u.role) || !u.personaId) return next();
 
     let membresias;
@@ -73,6 +76,9 @@ async function sesionVigente(req, res, next) {
         u.alcanceIdObraSocial = actual.alcanceIdObraSocial;
         // Sin fila en `profesional` el tipo de cuenta sale de la membresía (Fase E/J).
         if (!u.idRole) u.role = roleSinProfesional([actual]);
+        // Una vista armada con el rol anterior (p. ej. admin) ya no vale: se vuelve a
+        // la cuenta real.
+        if (vistaActiva(req)) salirDeVista(req);
     }
     return next();
 }

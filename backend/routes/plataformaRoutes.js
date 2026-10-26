@@ -15,4 +15,9 @@ router.post('/clinicas/:id/sincronizar', plataformaController.sincronizarMp);
 router.post('/clinicas/:id/cancelar-debito', plataformaController.cancelarDebito);
 router.post('/planes/:id/aplicar-precios', validate(schemas.plataforma.aplicarPrecios), plataformaController.aplicarPrecios);
 
+// Fase Z: "Ver como" otro rol/especialidad (solo en la sesión de quien lo pide).
+router.post('/vista', validate(schemas.plataforma.vista), plataformaController.entrarVista);
+router.delete('/vista', plataformaController.salirVista);
+router.get('/vista/pacientes', plataformaController.pacientesVista);
+
 module.exports = router;

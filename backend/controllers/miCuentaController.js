@@ -18,7 +18,8 @@ const { supabase } = require('../config/supabaseClient');
 const { serializarDiente } = require('../utils/odontograma');
 const { columnasCobertura } = require('../utils/cobertura');
 const { serializarCodificacion, SELECT_CODIFICACION } = require('../utils/codificacion');
-const { fichasPaciente } = require('../utils/fichasPaciente');
+const { fichasDeSesion } = require('../utils/fichasPaciente');
+const { datosPediatricos } = require('./pediatriaController');
 const { canjearCodigoVinculacion } = require('../utils/cuentaPaciente');
 const { registrarAcceso } = require('../utils/bitacora');
 const { parseFechaNacimiento, calcEdad } = require('../utils/fechaNacimiento');
@@ -49,7 +50,7 @@ function fmtFecha(iso) {
 
 // Fichas de paciente de la cuenta de la sesión (la principal primero).
 function getFichas(session) {
-    return fichasPaciente(session.user.id);
+    return fichasDeSesion(session.user);
 }
 
 // Registros clínicos de todas las fichas, con la clínica de cada uno (más viejo primero).
@@ -329,5 +330,27 @@ exports.vincularHistoria = async (req, res) => {
     } catch (err) {
         console.error('Error en mi-cuenta/vincular-historia:', err);
         return res.status(500).json({ error: 'No se pudo vincular la historia clínica.' });
+    }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/mi-cuenta/pediatria -> crecimiento, vacunas, desarrollo y perinatal de
+// todas las fichas (Fase Z). Solo lectura.
+// ---------------------------------------------------------------------------
+exports.getPediatria = async (req, res) => {
+    try {
+        const fichas = await getFichas(req.session);
+        if (fichas.length === 0) return res.status(404).json({ error: 'No encontramos tus datos.' });
+        const { persona } = fichas[0];
+        const datos = await datosPediatricos(supabase, fichas.map((f) => f.paciente.id));
+        return res.json({
+            ...datos,
+            nombre: [persona.nombre, persona.apellido].filter(Boolean).join(' '),
+            sexo: persona.sexo || '',
+            fechaNacimientoIso: persona.fecha_nacimiento || '',
+        });
+    } catch (err) {
+        console.error('Error en mi-cuenta/pediatria:', err);
+        return res.status(500).json({ error: 'No se pudieron cargar tus datos de crecimiento y vacunas.' });
     }
 };

@@ -122,8 +122,10 @@ function dibujarDiente(
     doc.circle(cx, cy, S / 2 + 0.6, "S")
   }
   if (endo) {
-    doc.setFillColor(...colorDe(endo.estado))
-    doc.circle(cx, cy, S * 0.1, "F")
+    // Línea vertical que atraviesa todo el diente
+    doc.setDrawColor(...colorDe(endo.estado))
+    doc.setLineWidth(0.5)
+    doc.line(cx, t - 0.4, cx, b + 0.4)
   }
   const cruz = extrac || ausente
   if (cruz) {
@@ -251,8 +253,8 @@ export function drawLeyendaOdontograma(doc: jsPDF, x: number, y: number, ancho: 
     {
       texto: "Endodoncia",
       icono: (ix, iy) => {
-        doc.setFillColor(...TEXTO)
-        doc.circle(ix + L / 2, iy + L / 2, 0.55, "F")
+        doc.setDrawColor(...TEXTO)
+        doc.line(ix + L / 2, iy, ix + L / 2, iy + L)
       },
     },
     {
