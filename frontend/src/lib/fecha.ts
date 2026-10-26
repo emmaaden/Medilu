@@ -213,3 +213,16 @@ export function errorFechaNacimiento(v: string): string | null {
   if (v > hoyAR()) return "La fecha de nacimiento no puede ser posterior a hoy."
   return null
 }
+
+/**
+ * Edad en años cumplidos a hoy (hora argentina), o null si la fecha falta o no es
+ * válida. Igual que calcEdad en backend/utils/fechaNacimiento.js.
+ */
+export function calcularEdad(fechaNac: string): number | null {
+  if (!fechaNac || errorFechaNacimiento(fechaNac)) return null
+  const [hy, hm, hd] = hoyAR().split("-").map(Number)
+  const [y, mo, d] = fechaNac.split("-").map(Number)
+  let edad = hy - y
+  if (hm < mo || (hm === mo && hd < d)) edad--
+  return edad >= 0 ? edad : null
+}

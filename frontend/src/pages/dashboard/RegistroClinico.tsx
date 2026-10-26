@@ -62,7 +62,7 @@ import {
   type Codificacion,
 } from "@/lib/catalogos"
 import { ESTADO_AUDITORIA, type EstadoAuditoria } from "@/lib/auditoria"
-import { errorFechaNacimiento, FECHA_NAC_MIN, hoyAR } from "@/lib/fecha"
+import { calcularEdad, errorFechaNacimiento, FECHA_NAC_MIN, hoyAR } from "@/lib/fecha"
 import { TarjetaPediatrica } from "@/components/dashboard/pediatria/PanelPediatrico"
 import { esPediatrico, numero } from "@/components/dashboard/pediatria/comun"
 import { edadMeses } from "@/lib/pediatria/oms"
@@ -84,7 +84,6 @@ const emptyForm = {
   sexo: "",
   direccion: "",
   fechaNacimiento: "",
-  edad: "",
   sintomas: "",
   diagnostico: "",
   tratamiento: "",
@@ -375,6 +374,8 @@ function RegistrarPaciente({
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }))
 
+  const edad = calcularEdad(form.fechaNacimiento)
+
   async function verificarDni() {
     const dni = form.dni.trim()
     if (!dni || existente || duplicado?.dni === dni) return
@@ -446,7 +447,7 @@ function RegistrarPaciente({
         sexo: form.sexo,
         direccion: form.direccion,
         fechaNacimiento: form.fechaNacimiento,
-        edad: form.edad,
+        edad: String(edad ?? ""),
         ...coberturaPayload(cobertura),
         area,
         profesional,
@@ -626,7 +627,15 @@ function RegistrarPaciente({
                   />
                 </Field>
                 <Field label="Edad" htmlFor="edad">
-                  <Input id="edad" type="number" className="h-10" value={form.edad} onChange={set("edad")} />
+                  {/* Se calcula sola a partir de la fecha de nacimiento */}
+                  <Input
+                    id="edad"
+                    readOnly
+                    tabIndex={-1}
+                    className="h-10 bg-muted"
+                    placeholder="Se calcula con la fecha de nacimiento"
+                    value={edad === null ? "" : `${edad} ${edad === 1 ? "año" : "años"}`}
+                  />
                 </Field>
                 <CoberturaFields value={cobertura} onChange={setCobertura} required idPrefix="reg" />
               </div>

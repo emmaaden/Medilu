@@ -319,12 +319,16 @@ export function Odontogram({
             pointerEvents="none"
           />
         )}
+        {/* Endodoncia: línea vertical que atraviesa todo el diente (azul a tratar, roja realizada) */}
         {endo && (
-          <circle
-            cx={x + S / 2}
-            cy={boxY + S / 2}
-            r={3}
-            fill={ESTADO_COLOR[(endo.estado as Estado) || "realizado"]}
+          <line
+            x1={x + S / 2}
+            y1={t - 3}
+            x2={x + S / 2}
+            y2={b + 3}
+            stroke={ESTADO_COLOR[(endo.estado as Estado) || "realizado"]}
+            strokeWidth={2.5}
+            strokeLinecap="round"
             pointerEvents="none"
           />
         )}
@@ -607,7 +611,7 @@ function Legend() {
         </span>
       </div>
       <p className="text-center text-[11px] text-muted-foreground">
-        ○ Corona · • Endodoncia · ✕ Ausente/Extracción · Im Implante · PF/PR Prótesis · Mov Movilidad
+        ○ Corona · | Endodoncia · ✕ Ausente/Extracción · Im Implante · PF/PR Prótesis · Mov Movilidad
       </p>
     </div>
   )
