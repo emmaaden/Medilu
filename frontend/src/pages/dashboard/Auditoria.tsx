@@ -68,6 +68,7 @@ import {
   type Revision,
 } from "@/lib/auditoria"
 import { useAuth } from "@/contexts/AuthContext"
+import { SkeletonTabla, SkeletonIndicadores, SkeletonDetalle, PageSkeleton } from "@/components/site/Skeletons"
 
 // Valor "sin filtro" de los Select (Radix no admite value="").
 const TODOS = "todos"
@@ -89,14 +90,6 @@ function mensajeError(err: unknown, fallback: string) {
 function EstadoBadge({ estado }: { estado: EstadoAuditoria }) {
   const meta = ESTADO_AUDITORIA[estado] ?? ESTADO_AUDITORIA.pendiente
   return <Badge variant={meta.variant}>{meta.label}</Badge>
-}
-
-function Cargando() {
-  return (
-    <div className="flex min-h-40 items-center justify-center">
-      <Loader2 className="size-6 animate-spin text-primary" />
-    </div>
-  )
 }
 
 function Paginacion({
@@ -142,7 +135,7 @@ export default function Auditoria() {
   if (!loading && user && user.rol !== "auditor" && !user.esAdmin) {
     return <Navigate to="/dashboard" replace />
   }
-  if (loading || !user) return <Cargando />
+  if (loading || !user) return <PageSkeleton />
 
   const esAuditor = user.rol === "auditor"
   const alcance = user.alcanceObraSocial
@@ -374,7 +367,7 @@ function Bandeja({ puedeRevisar }: { puedeRevisar: boolean }) {
         <Separator className="my-5" />
 
         {cargando && !datos ? (
-          <Cargando />
+          <SkeletonTabla />
         ) : datos && datos.registros.length > 0 ? (
           <>
             <Table>
@@ -569,7 +562,7 @@ function DetalleRegistroSheet({
         </SheetHeader>
 
         {!det || !reg || !pac ? (
-          <Cargando />
+          <SkeletonDetalle />
         ) : (
           <div className="grid gap-6 px-4 pb-8">
             {/* Paciente */}
@@ -846,7 +839,7 @@ function Bitacora() {
         <Separator className="my-5" />
 
         {cargando && !datos ? (
-          <Cargando />
+          <SkeletonTabla columnas={5} />
         ) : datos && datos.accesos.length > 0 ? (
           <>
             <Table>
@@ -953,7 +946,7 @@ function Resumen() {
       </div>
 
       {cargando && !datos ? (
-        <Cargando />
+        <SkeletonIndicadores />
       ) : datos ? (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -1139,7 +1132,7 @@ function Asistencia() {
       </div>
 
       {cargando && !datos ? (
-        <Cargando />
+        <SkeletonIndicadores />
       ) : datos ? (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import {
@@ -30,6 +30,7 @@ import {
   type EstadoAutorizacion,
   type ListaAutorizaciones,
 } from "@/lib/autorizaciones"
+import { SkeletonTabla } from "@/components/site/Skeletons"
 
 const TODAS = "todas"
 
@@ -99,9 +100,7 @@ export function AutorizacionesLista({
       </div>
 
       {cargando && !datos ? (
-        <div className="flex min-h-40 items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-primary" />
-        </div>
+        <SkeletonTabla columnas={modo !== "profesional" ? 6 : 5} />
       ) : datos && datos.autorizaciones.length > 0 ? (
         <>
           <Table>

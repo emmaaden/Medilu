@@ -28,6 +28,7 @@ import {
 import { api, ApiError } from "@/lib/api"
 import { useUser } from "@/hooks/useUser"
 import { cambiarPerfil } from "@/lib/perfil"
+import { SkeletonTarjetas, PageSkeleton } from "@/components/site/Skeletons"
 
 type Turno = {
   id: number
@@ -73,11 +74,7 @@ export default function MisTurnos() {
 
   // Gating por rol: mientras carga la sesión, spinner; si no es paciente, al login.
   if (loadingUser) {
-    return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-primary" />
-      </div>
-    )
+    return <PageSkeleton />
   }
   // Fase O: cuenta del equipo que además es paciente, sin perfil elegido todavía.
   if (user?.needsProfileSelection) {
@@ -186,9 +183,7 @@ export default function MisTurnos() {
           </Card>
 
           {turnos === null ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="size-6 animate-spin text-primary" />
-            </div>
+            <SkeletonTarjetas />
           ) : (
             <>
               {/* Próximos */}

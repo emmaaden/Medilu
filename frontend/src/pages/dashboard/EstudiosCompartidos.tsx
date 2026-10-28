@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Container } from "@/components/site/Section"
 import { api } from "@/lib/api"
+import { SkeletonTarjetas } from "@/components/site/Skeletons"
 
 type CategoriaId = "laboratorio" | "imagen" | "informe" | "receta" | "otro"
 
@@ -105,9 +106,7 @@ export default function EstudiosCompartidos() {
       </div>
 
       {estudios === null ? (
-        <div className="flex justify-center py-10">
-          <Loader2 className="size-6 animate-spin text-primary" />
-        </div>
+        <SkeletonTarjetas />
       ) : estudios.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center">

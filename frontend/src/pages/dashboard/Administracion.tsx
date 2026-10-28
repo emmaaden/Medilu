@@ -51,6 +51,7 @@ import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
 import { tieneFeature } from "@/lib/planes"
 import { FeatureGate } from "@/components/dashboard/PlanGate"
+import { PageSkeleton } from "@/components/site/Skeletons"
 
 type Rol = "admin" | "profesional" | "recepcion" | "auditor"
 
@@ -235,13 +236,7 @@ export default function Administracion() {
     }
   }
 
-  if (loading || cargando) {
-    return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-primary" />
-      </div>
-    )
-  }
+  if (loading || cargando) return <PageSkeleton />
 
   return (
     <Container className="py-8 sm:py-12">

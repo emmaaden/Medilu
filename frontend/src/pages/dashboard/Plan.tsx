@@ -47,6 +47,7 @@ import {
   type EstadoPlan,
   type Plan as PlanCatalogo,
 } from "@/lib/planes"
+import { PageSkeleton } from "@/components/site/Skeletons"
 
 type PlanClinica = {
   planId: string | null
@@ -231,13 +232,7 @@ export default function Plan() {
   // El plan lo gestiona el admin de la clínica activa.
   if (!loading && user && !user.esAdmin) return <Navigate to="/dashboard" replace />
 
-  if (!datos) {
-    return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-primary" />
-      </div>
-    )
-  }
+  if (!datos) return <PageSkeleton />
 
   const { plan, uso, planes, features, debito, pagos, pagoOnline } = datos
   const clinica = user?.clinicas.find((c) => c.clinicaId === user.clinicaId)?.nombre

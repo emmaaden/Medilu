@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/site/Logo"
 import { api, ApiError } from "@/lib/api"
 import { cambiarPerfil, type Perfil } from "@/lib/perfil"
+import { EleccionSkeleton } from "@/components/site/Skeletons"
 
 type PerfilesResponse = {
   activo: Perfil | null
@@ -80,11 +81,7 @@ export default function ElegirPerfil() {
   }
 
   if (!opciones) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center bg-muted/30">
-        <Loader2 className="size-7 animate-spin text-primary" />
-      </div>
-    )
+    return <EleccionSkeleton logo={<Logo />} />
   }
 
   return (

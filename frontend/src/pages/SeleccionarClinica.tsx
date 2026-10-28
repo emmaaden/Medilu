@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Logo } from "@/components/site/Logo"
 import { api, ApiError } from "@/lib/api"
 import type { CurrentUser, ClinicaMembresia } from "@/hooks/useUser"
+import { EleccionSkeleton } from "@/components/site/Skeletons"
 
 const ROL_META: Record<
   ClinicaMembresia["rol"],
@@ -75,11 +76,7 @@ export default function SeleccionarClinica() {
   }
 
   if (loading) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center bg-muted/30">
-        <Loader2 className="size-7 animate-spin text-primary" />
-      </div>
-    )
+    return <EleccionSkeleton logo={<Logo to="/dashboard" />} opciones={3} />
   }
 
   return (
