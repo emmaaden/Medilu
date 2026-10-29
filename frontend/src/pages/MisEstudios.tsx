@@ -39,6 +39,7 @@ import {
 import { Container, PageHero } from "@/components/site/Section"
 import { api, ApiError } from "@/lib/api"
 import { useUser } from "@/hooks/useUser"
+import { SkeletonLista, SkeletonTarjetas, PageSkeleton } from "@/components/site/Skeletons"
 
 type Compartido = {
   idProfesional: number
@@ -159,11 +160,7 @@ export default function MisEstudios() {
   }
 
   if (loadingUser) {
-    return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-primary" />
-      </div>
-    )
+    return <PageSkeleton />
   }
   if (!user || !esPaciente) {
     return <Navigate to="/login" replace />
@@ -191,9 +188,7 @@ export default function MisEstudios() {
           </div>
 
           {estudios === null ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="size-6 animate-spin text-primary" />
-            </div>
+            <SkeletonTarjetas />
           ) : estudios.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center">
@@ -626,9 +621,7 @@ function CompartirDialog({
             {query.trim().length >= 2 && (
               <div className="mt-1 max-h-56 overflow-y-auto rounded-lg border border-border">
                 {buscando ? (
-                  <div className="flex justify-center py-4">
-                    <Loader2 className="size-4 animate-spin text-primary" />
-                  </div>
+                  <SkeletonLista filas={2} bordes={false} />
                 ) : resultados.length === 0 ? (
                   <p className="px-3 py-4 text-center text-sm text-muted-foreground">
                     No se encontraron profesionales.

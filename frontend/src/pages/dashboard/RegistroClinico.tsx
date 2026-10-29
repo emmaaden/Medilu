@@ -66,6 +66,7 @@ import { calcularEdad, errorFechaNacimiento, FECHA_NAC_MIN, hoyAR } from "@/lib/
 import { TarjetaPediatrica } from "@/components/dashboard/pediatria/PanelPediatrico"
 import { esPediatrico, numero } from "@/components/dashboard/pediatria/comun"
 import { edadMeses } from "@/lib/pediatria/oms"
+import { SkeletonBloque, SkeletonLista } from "@/components/site/Skeletons"
 
 const SEXO = [
   { value: "Masculino", label: "Masculino" },
@@ -887,11 +888,7 @@ function CodigoVinculacionFicha({ dni }: { dni: string }) {
   }, [dni])
 
   if (cargando && !vinculo) {
-    return (
-      <div className="flex justify-center py-6">
-        <Loader2 className="size-5 animate-spin text-primary" />
-      </div>
-    )
+    return <SkeletonBloque className="h-28 w-full rounded-lg" />
   }
   if (!vinculo) {
     return (
@@ -1171,9 +1168,7 @@ function ListaPacientesClinica({
         {error && !lista ? (
           <p className="mt-4 text-sm text-destructive">No se pudieron cargar los pacientes.</p>
         ) : !lista ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="size-6 animate-spin text-primary" />
-          </div>
+          <SkeletonLista filas={6} accion={false} />
         ) : (
           <>
             <ul

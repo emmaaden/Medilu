@@ -16,6 +16,7 @@ import { Container, PageHero } from "@/components/site/Section"
 import { api, ApiError } from "@/lib/api"
 import { useUser } from "@/hooks/useUser"
 import { errorFechaNacimiento, FECHA_NAC_MIN, hoyAR } from "@/lib/fecha"
+import { SkeletonFormulario, PageSkeleton } from "@/components/site/Skeletons"
 
 const schema = z.object({
   nombre: z.string().trim().min(1, "Ingresá tu nombre").max(120),
@@ -84,11 +85,7 @@ export default function MiPerfil() {
   }, [esPaciente, reset])
 
   if (loadingUser) {
-    return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-primary" />
-      </div>
-    )
+    return <PageSkeleton />
   }
   if (!user || !esPaciente) {
     return <Navigate to="/login" replace />
@@ -127,9 +124,7 @@ export default function MiPerfil() {
           <Card>
             <CardContent className="p-6 sm:p-8">
               {loading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="size-6 animate-spin text-primary" />
-                </div>
+                <SkeletonFormulario />
               ) : (
                 <form
                   onSubmit={handleSubmit(onSubmit)}

@@ -1,11 +1,11 @@
 import { Suspense, useEffect } from "react"
 import { Outlet, useLocation, Navigate } from "react-router-dom"
-import { Loader2 } from "lucide-react"
 import { AuthProvider, useAuth } from "@/contexts/AuthContext"
 import { DashboardNavbar } from "@/components/dashboard/DashboardNavbar"
 import { PageLoader } from "@/components/site/PageLoader"
 import { MAIN_ID, SkipLink } from "@/components/site/A11y"
 import { PlanBanner } from "@/components/dashboard/PlanGate"
+import { PantallaSkeleton } from "@/components/site/Skeletons"
 
 function ScrollToTop() {
   const { pathname } = useLocation()
@@ -20,11 +20,7 @@ function Guarded() {
   const { pathname } = useLocation()
 
   if (loading) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center">
-        <Loader2 className="size-7 animate-spin text-primary" />
-      </div>
-    )
+    return <PantallaSkeleton />
   }
 
   // Sin sesión → login.

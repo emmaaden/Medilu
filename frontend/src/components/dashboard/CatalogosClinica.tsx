@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table"
 import { api, ApiError } from "@/lib/api"
 import { invalidarCatalogo, type ObraSocial, type Practica } from "@/lib/catalogos"
+import { SkeletonLista, SkeletonTabla } from "@/components/site/Skeletons"
 
 const msg = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback)
 
@@ -139,9 +140,7 @@ function ObrasSocialesCard() {
         </form>
 
         {cargando ? (
-          <div className="flex min-h-20 items-center justify-center">
-            <Loader2 className="size-5 animate-spin text-primary" />
-          </div>
+          <SkeletonLista filas={3} className="mt-5" />
         ) : propias.length === 0 ? (
           <p className="mt-4 text-sm text-muted-foreground">Todavía no agregaste obras sociales propias.</p>
         ) : (
@@ -336,9 +335,7 @@ function PracticasCard() {
         </form>
 
         {cargando ? (
-          <div className="flex min-h-20 items-center justify-center">
-            <Loader2 className="size-5 animate-spin text-primary" />
-          </div>
+          <SkeletonTabla className="mt-4" />
         ) : lista.length === 0 ? (
           <p className="mt-4 text-sm text-muted-foreground">
             Todavía no hay prácticas. Cargá la lista base o importá la de tu convenio.

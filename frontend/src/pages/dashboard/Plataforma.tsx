@@ -29,6 +29,7 @@ import { SelectField } from "@/components/form/SelectField"
 import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
 import { ESTADO_LABEL, formatoPesos, montoPlan, type EstadoPlan, type Plan } from "@/lib/planes"
+import { PageSkeleton } from "@/components/site/Skeletons"
 
 type Suscripcion = {
   planId: string
@@ -248,13 +249,7 @@ export default function Plataforma() {
     }
   }
 
-  if (!datos) {
-    return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-primary" />
-      </div>
-    )
-  }
+  if (!datos) return <PageSkeleton />
 
   const planPorId = new Map(datos.planes.map((p) => [p.id, p]))
   const opcionesPlan = datos.planes.map((p) => ({ value: p.id, label: p.nombre }))

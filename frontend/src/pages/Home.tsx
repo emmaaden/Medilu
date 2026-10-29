@@ -14,8 +14,7 @@ import {
   ClipboardList,
   LogIn,
   LayoutDashboard,
-  Loader2,
-} from "lucide-react"
+  } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -155,8 +154,9 @@ function ProximoTurnoCard() {
     return (
       <HeroShell>
         <HeroHeader title="Próximo turno" subtitle="Cargando…" />
-        <div className="flex justify-center py-6">
-          <Loader2 className="size-6 animate-spin text-primary" />
+        <div className="space-y-3" role="status" aria-label="Cargando">
+          <Skeleton className="h-16 w-full rounded-lg" />
+          <Skeleton className="h-11 w-full" />
         </div>
       </HeroShell>
     )

@@ -1,12 +1,13 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { ArrowRight, Loader2, MessageCircle, HeartHandshake } from "lucide-react"
+import { ArrowRight, MessageCircle, HeartHandshake } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Container, PageHero } from "@/components/site/Section"
 import { PlanCard, type Ciclo } from "@/components/site/PlanCard"
 import { WHATSAPP_URL } from "@/lib/site"
 import { mesesDeRegalo, useCatalogoPlanes, waContratar } from "@/lib/planes"
+import { SkeletonPlanes } from "@/components/site/Skeletons"
 
 export default function Planes() {
   const { catalogo, error } = useCatalogoPlanes()
@@ -38,9 +39,7 @@ export default function Planes() {
         </div>
 
         {!catalogo && !error && (
-          <div className="flex min-h-80 items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-primary" aria-label="Cargando planes" />
-          </div>
+          <SkeletonPlanes />
         )}
         {error && (
           <p className="mt-10 text-center text-sm text-muted-foreground" role="alert">

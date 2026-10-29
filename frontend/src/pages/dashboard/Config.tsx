@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog"
 import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
+import { SkeletonTabla } from "@/components/site/Skeletons"
 
 type Datos = {
   nombre?: string
@@ -565,9 +566,7 @@ function HorariosEditor({ idRole }: { idRole: number }) {
           </div>
 
           {loading ? (
-            <div className="flex justify-center py-6">
-              <Loader2 className="size-5 animate-spin text-primary" />
-            </div>
+            <SkeletonTabla filas={3} />
           ) : horarios.length ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { api, ApiError } from "@/lib/api"
+import { SkeletonTarjetas } from "@/components/site/Skeletons"
 
 type Turno = {
   id: number
@@ -90,9 +91,7 @@ export default function GestionarTurno() {
       <Container className="py-12">
         <div className="mx-auto max-w-lg">
           {status === "loading" && (
-            <div className="flex justify-center py-8">
-              <Loader2 className="size-6 animate-spin text-primary" />
-            </div>
+            <SkeletonTarjetas cantidad={1} />
           )}
 
           {status === "error" && (

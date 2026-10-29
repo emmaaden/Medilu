@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select"
 import type { RolVista, VistaSesion } from "@/hooks/useUser"
 import { ROL_VISTA_LABEL, entrarEnVista, salirDeVista } from "@/lib/vista"
+import { SkeletonLista } from "@/components/site/Skeletons"
 
 // Fase Z: "Ver como" del equipo de la plataforma. Elige rol (y especialidad, o la
 // ficha de paciente a mirar) y recarga como lo vería esa persona.
@@ -204,9 +205,7 @@ export function VerComoDialog({
               </div>
               <div className="max-h-52 overflow-y-auto rounded-md border border-border">
                 {buscando && pacientes.length === 0 ? (
-                  <p className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" /> Buscando…
-                  </p>
+                  <SkeletonLista filas={3} accion={false} bordes={false} />
                 ) : pacientes.length === 0 ? (
                   <p className="p-3 text-sm text-muted-foreground">Sin resultados.</p>
                 ) : (

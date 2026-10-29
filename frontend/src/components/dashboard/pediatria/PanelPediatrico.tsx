@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { Baby, Download, Loader2, TriangleAlert } from "lucide-react"
+import { Baby, Download, TriangleAlert } from "lucide-react"
 import { api } from "@/lib/api"
 import { hoyAR } from "@/lib/fecha"
 import { Button } from "@/components/ui/button"
@@ -28,6 +28,7 @@ import { CarnetVacunas } from "./CarnetVacunas"
 import { HitosDesarrollo } from "./HitosDesarrollo"
 import { AntecedentesPerinatales } from "./AntecedentesPerinatales"
 import { CalculadoraDosis } from "./CalculadoraDosis"
+import { SkeletonIndicadores } from "@/components/site/Skeletons"
 
 /**
  * Fase Z: panel pediátrico de un paciente. En el registro clínico carga y edita
@@ -78,11 +79,7 @@ export function PanelPediatrico({
   }
   if (error) return <p className="text-sm text-destructive">No se pudieron cargar los datos pediátricos.</p>
   if (!datos) {
-    return (
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Cargando…
-      </p>
-    )
+    return <SkeletonIndicadores cantidad={4} />
   }
 
   const gest = datos.perinatal

@@ -21,6 +21,7 @@ import {
   tamanioLegible,
   type Autorizacion,
 } from "@/lib/autorizaciones"
+import { SkeletonDetalle } from "@/components/site/Skeletons"
 
 export type ModoAutorizacion = "profesional" | "auditor" | "admin"
 
@@ -144,9 +145,7 @@ export function AutorizacionSheet({
         </SheetHeader>
 
         {!a ? (
-          <div className="flex min-h-40 items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-primary" />
-          </div>
+          <SkeletonDetalle />
         ) : (
           <div className="grid gap-5 px-4 pb-8">
             <div className="flex flex-wrap items-center gap-2">

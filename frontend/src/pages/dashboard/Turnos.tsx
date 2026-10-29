@@ -56,6 +56,7 @@ import {
   type Profesional,
   type Turno,
 } from "@/components/dashboard/turnos-dialogs"
+import { SkeletonTarjetas } from "@/components/site/Skeletons"
 
 const ESTADOS = [
   { value: "todos", label: "Todos los estados" },
@@ -194,9 +195,7 @@ export default function TurnosDashboard() {
 
       {/* Lista */}
       {loading ? (
-        <div className="flex min-h-[30dvh] items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-primary" />
-        </div>
+        <SkeletonTarjetas cantidad={4} icono={false} />
       ) : turnos.length === 0 ? (
         <Card>
           <CardContent className="p-10 text-center text-muted-foreground">
@@ -415,9 +414,7 @@ function BloqueosPanel({ profesionales }: { profesionales: Profesional[] }) {
       </div>
 
       {loading ? (
-        <div className="flex min-h-[30dvh] items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-primary" />
-        </div>
+        <SkeletonTarjetas icono={false} />
       ) : bloqueos.length === 0 ? (
         <Card>
           <CardContent className="p-10 text-center text-muted-foreground">

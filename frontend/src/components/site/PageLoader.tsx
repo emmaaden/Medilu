@@ -1,10 +1,6 @@
-import { Loader2 } from "lucide-react"
+import { PageSkeleton } from "@/components/site/Skeletons"
 
-/** Indicador de carga para páginas con carga diferida (lazy). */
+/** Esqueleto para páginas con carga diferida (lazy). */
 export function PageLoader() {
-  return (
-    <div className="flex min-h-[60dvh] items-center justify-center">
-      <Loader2 className="size-6 animate-spin text-primary" aria-label="Cargando" />
-    </div>
-  )
+  return <PageSkeleton />
 }

@@ -25,6 +25,7 @@ import type { DatosPediatricos } from "@/lib/pediatria/tipos"
 import { CodificacionResumen } from "@/components/form/CodificacionEditor"
 import { ACCION_LABEL } from "@/lib/auditoria"
 import { formatFechaHora } from "@/lib/fecha"
+import { SkeletonLista, SkeletonTarjetas, PageSkeleton } from "@/components/site/Skeletons"
 
 type Acceso = { id: number; fecha: string; actor: string; rol: string; accion: string; clinica?: string }
 
@@ -83,9 +84,7 @@ function AccesosHistoria() {
         Cada vez que alguien de una clínica abre, carga o audita tu historia queda registrado.
       </p>
       {accesos === null ? (
-        <div className="flex justify-center py-6">
-          <Loader2 className="size-5 animate-spin text-primary" />
-        </div>
+        <SkeletonLista accion={false} />
       ) : accesos.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">Todavía no hay accesos registrados.</p>
       ) : (
@@ -240,11 +239,7 @@ export default function MiHistoria() {
   }
 
   if (loadingUser) {
-    return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-primary" />
-      </div>
-    )
+    return <PageSkeleton />
   }
   if (!user || !esPaciente) {
     return <Navigate to="/login" replace />
@@ -297,9 +292,7 @@ export default function MiHistoria() {
           </div>
 
           {loading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="size-6 animate-spin text-primary" />
-            </div>
+            <SkeletonTarjetas />
           ) : !paciente ? (
             <Card>
               <CardContent className="p-6 text-center text-sm text-muted-foreground">

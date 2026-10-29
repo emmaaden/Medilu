@@ -17,6 +17,7 @@ import { Container } from "@/components/site/Section"
 import { api, ApiError } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
 import { downloadPatientHistoryPdf, type Paciente } from "@/lib/patientPdf"
+import { SkeletonLista } from "@/components/site/Skeletons"
 
 type PacienteAlcance = { dni: string | null; nombre: string | null; registros: number }
 type Resumen = {
@@ -237,9 +238,7 @@ export default function HistoriasClinicas() {
             </Badge>
           </h2>
           {cargando ? (
-            <div className="flex justify-center py-6">
-              <Loader2 className="size-6 animate-spin text-primary" />
-            </div>
+            <SkeletonLista />
           ) : (
             <ul className="mt-4 divide-y divide-border rounded-lg border border-border">
               {pacientes.map((p) => (

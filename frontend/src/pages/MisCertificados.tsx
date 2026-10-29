@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { Container, PageHero } from "@/components/site/Section"
 import { api } from "@/lib/api"
 import { useUser } from "@/hooks/useUser"
+import { SkeletonTarjetas, PageSkeleton } from "@/components/site/Skeletons"
 
 export type Certificado = {
   id: number
@@ -74,11 +75,7 @@ export default function MisCertificados() {
   }
 
   if (loadingUser) {
-    return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-primary" />
-      </div>
-    )
+    return <PageSkeleton />
   }
   if (!user || !esPaciente) {
     return <Navigate to="/login" replace />
@@ -103,9 +100,7 @@ export default function MisCertificados() {
           </div>
 
           {certificados === null ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="size-6 animate-spin text-primary" />
-            </div>
+            <SkeletonTarjetas />
           ) : certificados.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center">
