@@ -9,9 +9,11 @@ Requisitos (una vez):  pip install edge-tts playwright imageio-ffmpeg
 Uso:                   python build_video.py [reel] [--muestras]
 Reels (ver REELS):     medilu-video  video ilustrativo fijado (semana 1, por defecto)
                        reel-turno    «turno a las 23:14» (semana 2)
+                       reel-dictado  «la historia clínica se dicta» (semana 3)
 Salida:                el MP4, la portada y el guion de ese reel, en esta carpeta.
+Detrás de un proxy (p. ej. en la nube), edge-tts usa HTTPS_PROXY si está definido.
 """
-import asyncio, html, json, pathlib, re, subprocess, sys
+import asyncio, html, json, os, pathlib, re, subprocess, sys
 
 import edge_tts
 import imageio_ffmpeg
@@ -19,9 +21,10 @@ from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).parent
 sys.path.insert(0, str(ROOT.parent))
-from marca import FONT_FACE, TOKENS, WHATSAPP, HANDLE, DIAS_PRUEBA, icon, iso, whatsapp  # noqa: E402
+from marca import FONT_FACE, TOKENS, WHATSAPP, HANDLE, DIAS_PRUEBA, icon, iso, whatsapp, tooth  # noqa: E402
 
 VOZ = "es-UY-ValentinaNeural"  # rioplatense y más fluida que es-AR-ElenaNeural; masculina: es-AR-TomasNeural
+VOZ_PROFESIONAL = "es-AR-TomasNeural"  # el profesional que dicta en el reel de la semana 3
 VELOCIDAD = "+0%"  # acelerarla la hace sonar trabada
 FPS = 30
 W, H = 1080, 1920
@@ -39,17 +42,6 @@ def palabras(s):
     return [w for w in s.split() if any(c.isalnum() for c in w)]
 
 
-def tooth(caras):
-    """Pieza del odontograma por caras (convención de la app: rojo realizado, azul a tratar)."""
-    col = {"r": "oklch(0.58 0.2 25)", "a": "var(--primary)", "": "#fff"}
-    polys = ["0,0 100,0 70,30 30,30", "100,0 100,100 70,70 70,30", "0,100 100,100 70,70 30,70",
-             "0,0 0,100 30,70 30,30"]
-    s = "".join(f'<polygon points="{p}" fill="{col[c]}"/>' for p, c in zip(polys, caras[:4]))
-    s += f'<rect x="30" y="30" width="40" height="40" fill="{col[caras[4]]}"/>'
-    return (f'<svg viewBox="-3 -3 106 106" class="tooth"><g stroke="var(--fg)" stroke-width="3" '
-            f'stroke-linejoin="round">{s}</g></svg>')
-
-
 def dictado(texto, d0, paso=0.16):
     return " ".join(f'<span class="a fade" style="--d:{d0 + i * paso:.2f}s">{html.escape(w)}</span>'
                     for i, w in enumerate(texto.split()))
@@ -57,7 +49,10 @@ def dictado(texto, d0, paso=0.16):
 
 # ---------------------------------------------------------------------------
 # Guion. En el HTML, {c0}, {c1}… es el segundo (dentro de la escena) en que empieza a
-# decirse cada fragmento: así lo que aparece en pantalla coincide con la voz.
+# decirse cada fragmento: así lo que aparece en pantalla coincide con la voz. c[-1] (uno más
+# que los fragmentos) es el segundo en que termina la locución de la escena.
+# Opcionales por escena: dark=True (fondo azul), voz="…" (otra voz), caps=False (sin subtítulos,
+# cuando el texto ya está en pantalla), tail=1.5 (más silencio al final de la escena).
 # ---------------------------------------------------------------------------
 ESCENAS = [
     dict(vo=[C("¿Todavía das turnos por teléfono"), C("a tus pacientes?")], html=lambda c: f"""
@@ -217,11 +212,64 @@ ESCENAS_TURNO = [
         <p class="a rise center" style="--d:{c[1] + .8}s">{HANDLE} · sin tarjeta</p>"""),
 ]
 
+# Semana 3 · «La historia clínica se dicta»: abre con el profesional dictando (otra voz) y el
+# texto apareciendo frase por frase, como en la app (whisper transcribe en cada pausa).
+DICTADO = [
+    C("Paciente refiere dolor al frío en la pieza 36.", "Paciente refiere dolor al frío en la pieza treinta y seis."),
+    C("Caries oclusal profunda."),
+    C("Se indica obturación con resina compuesta."),
+]
+DICTADO_TEXTO = " ".join(t for t, _ in DICTADO)
+
+ESCENAS_DICTADO = [
+    dict(voz=VOZ_PROFESIONAL, caps=False, tail=1.6, vo=DICTADO, html=lambda c: f"""
+        <h2 class="center bal">La historia clínica, sin tipear</h2>
+        <div class="card big-card">
+          <div class="ev-t"><b>Evolución</b><span>Odontología</span></div>
+          <div class="mic-row"><div class="mic">{icon("mic")}<i class="ring"></i></div><b>Escuchando…</b></div>
+          <p class="dict">{"".join(f'<span class="a fade" style="--d:{c[k + 1] + .2:.2f}s">{html.escape(t)} </span>'
+                                   for k, (t, _) in enumerate(DICTADO))}</p>
+        </div>"""),
+
+    dict(vo=[C("Así se escribe una historia clínica en Medilu:"), C("hablando."),
+             C("Vos atendés, y el texto queda en la ficha del paciente.")], html=lambda c: f"""
+        <h1 class="a pop center" style="--d:{c[1]}s">Hablando.</h1>
+        <div class="a rise card big-card" style="--d:0s">
+          <div class="ev-t"><b>Laura Méndez</b><span>Consulta · hoy</span></div>
+          <p class="entry">{html.escape(DICTADO_TEXTO)}</p>
+          <div class="a pop okline" style="--d:{c[2] + 1}s">{icon("circle-check")} Guardado en la ficha</div>
+        </div>"""),
+
+    dict(vo=[C("Y viene preparado"), C("con el vocabulario de tu especialidad.")], html=lambda c: f"""
+        <div class="a rise kicker" style="--d:0s">Vocabulario por especialidad</div>
+        <div class="vocab">
+          {"".join(f'<div class="a slideL card vrow" style="--d:{c[1] + i * .45:.2f}s"><span>{e}</span><b>{t}</b></div>'
+                   for i, (e, t) in enumerate([
+              ("Odontología", "Tartrectomía"), ("Pediatría", "Amoxicilina 80 mg/kg/día"), ("Cardiología", "Enalapril 10 mg"),
+              ("Ginecología", "Papanicolaou"), ("Dermatología", "Dermatoscopía")]))}
+        </div>"""),
+
+    dict(vo=[C("El audio no se guarda ni se manda a terceros:"), C("se transcribe en un servidor propio.")],
+         html=lambda c: f"""
+        <div class="a pop ring-ic" style="--d:0s">{icon("shield-check")}</div>
+        <h2 class="a rise center bal" style="--d:.2s">El audio no se guarda</h2>
+        <p class="a rise center muted bal" style="--d:{c[1]}s">Se transcribe en un servidor propio y no se envía a terceros.</p>"""),
+
+    dict(dark=True, vo=[C(f"Probalo {DIAS_PRUEBA} días gratis.", "Probalo catorce días gratis."), C("Comentá PRUEBA y te escribimos.")],
+         html=lambda c: f"""
+        <div class="a pop" style="--d:0s">{iso("hero-iso sm", True)}</div>
+        <h2 class="a rise center" style="--d:{c[0]}s">Probalo {DIAS_PRUEBA} días gratis</h2>
+        <div class="a pop kw" style="--d:{c[1] + .2}s">Comentá PRUEBA</div>
+        <p class="a rise center" style="--d:{c[1] + .8}s">{HANDLE} · sin tarjeta</p>"""),
+]
+
 # nombre → escenas, archivos de salida y escena de la portada
 REELS = {
     "medilu-video": dict(escenas=ESCENAS, mp4="medilu-video.mp4", portada="portada.png", guion="guion.txt", escena_portada=2),
     "reel-turno": dict(escenas=ESCENAS_TURNO, mp4="reel-turno.mp4", portada="reel-turno-portada.png",
                        guion="reel-turno-guion.txt", escena_portada=0),
+    "reel-dictado": dict(escenas=ESCENAS_DICTADO, mp4="reel-dictado.mp4", portada="reel-dictado-portada.png",
+                         guion="reel-dictado-guion.txt", escena_portada=0),
 }
 
 CSS = f"""
@@ -363,6 +411,16 @@ p {{ font-size: 48px; line-height: 1.3; }}
 .ag-slot b {{ font-size: 40px; }}
 .ag-slot > span {{ font-size: 32px; color: var(--muted); }}
 .ag-slot.new {{ background: var(--card); border: 4px solid var(--turno); box-shadow: 0 20px 40px -24px oklch(0.4 0.1 192 / .6); }}
+/* Reel «dictado» */
+.ev-t {{ display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 22px; border-bottom: 3px solid var(--border); }}
+.ev-t b {{ font-size: 50px; letter-spacing: -.02em; }}
+.ev-t span {{ font-size: 34px; color: var(--muted); }}
+.big-card .dict {{ min-height: 320px; }}
+.entry {{ font-size: 42px; line-height: 1.4; }}
+.vocab {{ display: grid; gap: 24px; width: 100%; }}
+.vrow {{ display: flex; flex-direction: column; gap: 6px; padding: 34px 44px; }}
+.vrow span {{ font-size: 32px; font-weight: 600; color: var(--primary); text-transform: uppercase; letter-spacing: .06em; }}
+.vrow b {{ font-size: 52px; letter-spacing: -.02em; }}
 .kw {{ padding: 30px 64px; border-radius: 32px; background: var(--on-primary); color: var(--primary); font-size: 80px; font-weight: 800; letter-spacing: -.02em; }}
 /* Subtítulos: por encima de la zona que tapa la interfaz de Reels */
 .caps {{ position: absolute; z-index: 100; left: 70px; right: 70px; top: 1380px; height: 260px; display: grid; place-items: center; }}
@@ -374,8 +432,9 @@ p {{ font-size: 48px; line-height: 1.3; }}
 """
 
 
-async def _tts(texto, mp3):
-    com = edge_tts.Communicate(texto, VOZ, rate=VELOCIDAD, boundary="WordBoundary")
+async def _tts(texto, mp3, voz):
+    com = edge_tts.Communicate(texto, voz, rate=VELOCIDAD, boundary="WordBoundary",
+                               proxy=os.environ.get("HTTPS_PROXY") or None)
     marcas = []
     with open(mp3, "wb") as f:
         async for ch in com.stream():
@@ -386,15 +445,15 @@ async def _tts(texto, mp3):
     return marcas
 
 
-def tts(texto, mp3):
+def tts(texto, mp3, voz=VOZ):
     """Locución + segundo de cada palabra. Se reutiliza si el texto y la voz no cambiaron."""
     meta = mp3.with_suffix(".json")
-    clave = {"texto": texto, "voz": VOZ, "velocidad": VELOCIDAD}
+    clave = {"texto": texto, "voz": voz, "velocidad": VELOCIDAD}
     if mp3.exists() and meta.exists():
         guardado = json.loads(meta.read_text(encoding="utf-8"))
         if guardado["clave"] == clave:
             return guardado["marcas"]
-    marcas = asyncio.run(_tts(texto, mp3))
+    marcas = asyncio.run(_tts(texto, mp3, voz))
     meta.write_text(json.dumps({"clave": clave, "marcas": marcas}, ensure_ascii=False), encoding="utf-8")
     return marcas
 
@@ -414,7 +473,8 @@ def main(nombre="medilu-video", muestras=False):
     for i, esc in enumerate(ESCENAS):
         dicho = " ".join(d for _, d in esc["vo"])
         mp3 = TMP / f"vo-{i:02d}.mp3"
-        marcas = tts(dicho, mp3)
+        voz = esc.get("voz", VOZ)
+        marcas = tts(dicho, mp3, voz)
         dur = duracion(mp3)
         # Comienzo de cada fragmento según el tiempo de su primera palabra.
         n, inicios = 0, []
@@ -424,16 +484,18 @@ def main(nombre="medilu-video", muestras=False):
         if len(marcas) != n:
             print(f"aviso: escena {i}: {len(marcas)} marcas de palabra para {n} palabras")
         c = [round(LEAD + x, 2) for x in inicios]
-        largo = LEAD + dur + (FINAL if i == len(ESCENAS) - 1 else TAIL)
+        largo = LEAD + dur + (FINAL if i == len(ESCENAS) - 1 else esc.get("tail", TAIL))
         t0, t1 = t, t + largo
         cls = "scene dark" if esc.get("dark") else "scene"
-        escenas_html.append(f'<section class="{cls}" style="--t0:{t0:.3f}s;--t1:{t1:.3f}s;z-index:{i}">{esc["html"](c)}</section>')
-        for k, (texto, _) in enumerate(esc["vo"]):
+        html_esc = esc["html"](c + [round(LEAD + dur, 2)])
+        escenas_html.append(f'<section class="{cls}" style="--t0:{t0:.3f}s;--t1:{t1:.3f}s;z-index:{i}">{html_esc}</section>')
+        for k, (texto, _) in enumerate(esc["vo"] if esc.get("caps", True) else []):
             s = t0 + c[k]
             e = t0 + c[k + 1] - .05 if k + 1 < len(c) else t0 + LEAD + dur + .15
             caps.append(f'<div class="cap" style="--s:{s:.3f}s;--e:{e:.3f}s"><span>{html.escape(texto)}</span></div>')
         audios.append((mp3, t0 + LEAD))
-        guion.append(f"[{t0:5.1f}s] " + " ".join(tx for tx, _ in esc["vo"]))
+        quien = "" if voz == VOZ else f"({voz}) "
+        guion.append(f"[{t0:5.1f}s] {quien}" + " ".join(tx for tx, _ in esc["vo"]))
         t = t1
     total = t
     (ROOT / reel["guion"]).write_text("\n".join(guion) + f"\n\nDuración: {total:.1f} s · Voz: {VOZ}\n", encoding="utf-8")

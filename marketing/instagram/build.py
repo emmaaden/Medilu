@@ -3,18 +3,20 @@
   carrusel-fijado-1/   «Qué es Medilu»          9 × 1080×1350
   carrusel-planes/     «Planes y precios»       6 × 1080×1350
   carrusel-contratar/  «Cómo contratar»         7 × 1080×1350
+  carrusel-certificado/ «Certificado en 3 pasos» 6 × 1080×1350
   posts/               posts sueltos            1080×1350
   destacadas/<grupo>/  historias destacadas     1080×1920
   destacadas/portadas/ portadas de destacadas   1080×1920
   foto-perfil.png                               1080×1080
 
-Uso: python build.py  (requiere Chrome instalado y `npm install` hecho en frontend/,
-de donde salen la fuente Geist y los íconos de lucide; ver ../marca.py)."""
+Uso: python build.py [grupo …]  (sin grupos, genera todo; p. ej. `python build.py carrusel-certificado
+posts`). Requiere Chrome instalado (fuera de Windows, exportar CHROME con su ruta) y `npm install`
+hecho en frontend/, de donde salen la fuente Geist y los íconos de lucide; ver ../marca.py)."""
 import pathlib, subprocess, html, sys
 
 ROOT = pathlib.Path(__file__).parent
 sys.path.insert(0, str(ROOT.parent))
-from marca import CHROME, FONT_FACE, TOKENS, HANDLE, WHATSAPP, DIAS_PRUEBA, ISOTIPO, icon, iso, whatsapp  # noqa: E402
+from marca import CHROME, FONT_FACE, TOKENS, HANDLE, WHATSAPP, DIAS_PRUEBA, ISOTIPO, ODO_COLOR, icon, iso, whatsapp, tooth  # noqa: E402
 
 # --- Datos del negocio (verificados contra la tabla `plan` de producción, 2026-10-17) ---
 PAGO_ONLINE = False  # True cuando Mercado Pago esté activo en producción
@@ -114,6 +116,21 @@ ul.sm li {{ font-size: 38px; font-weight: 500; padding: 18px 0; }}
 .navitem {{ display: flex; align-items: center; gap: 22px; font-size: 40px; font-weight: 500; padding: 22px 28px; border-radius: 20px; color: var(--muted); }}
 .navitem.on {{ background: var(--accent); color: var(--primary); font-weight: 600; }}
 .navitem svg {{ width: 44px; height: 44px; }}
+/* Semana 3: certificado y odontograma */
+.inp {{ flex: 1; display: flex; align-items: center; height: 112px; padding: 0 36px; border-radius: 24px; border: 3px solid var(--border); font-size: 40px; font-weight: 500; }}
+.search {{ display: flex; gap: 20px; }}
+.search .btn {{ padding: 0 44px; }}
+.sig {{ width: 440px; height: 130px; margin-top: 24px; }}
+.sig path {{ fill: none; stroke: var(--primary); stroke-width: 6; stroke-linecap: round; }}
+.sig-l {{ font-size: 30px; color: var(--muted); border-top: 3px solid var(--border); padding-top: 14px; width: 440px; }}
+.odo-card {{ margin: 48px -70px 0; padding: 44px 40px; }}
+.odo-grid {{ display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px 10px; }}
+.odo-grid div {{ display: flex; flex-direction: column; align-items: center; gap: 4px; }}
+.odo-grid .tooth {{ width: 100%; }}
+.odo-grid small {{ font-size: 26px; font-weight: 600; color: var(--muted); }}
+.odo-grid hr {{ grid-column: 1 / -1; border: 0; border-top: 3px dashed var(--border); margin: 10px 0; }}
+.legend {{ display: flex; flex-wrap: wrap; gap: 14px 36px; margin-top: 32px; font-size: 32px; color: var(--muted); font-weight: 500; }}
+.legend i {{ display: inline-block; width: 28px; height: 28px; border-radius: 8px; margin-right: 12px; vertical-align: -4px; }}
 .tap {{ position: absolute; bottom: 300px; right: 110px; font-size: 32px; font-weight: 600; color: var(--muted); }}
 .dark .tap {{ color: var(--turno-on); }}
 """
@@ -259,6 +276,56 @@ carrusel_contratar = [
     *contratar[5:],
 ]
 
+# Semana 3 · Certificado con firma en 3 pasos (flujo de Panel → Certificados; datos ficticios)
+FIRMA = ('<svg class="sig" viewBox="0 0 400 120"><path d="M10 80 C 40 20, 60 20, 70 70 S 100 110, 120 60 S 150 10, 170 60 '
+         'C 180 85, 195 90, 210 60 C 222 38, 240 40, 245 62 C 250 82, 268 84, 290 55 L 300 45 C 320 70, 350 75, 390 40"/></svg>')
+
+carrusel_certificado = [
+    (f'{iso("cover-iso", True)}<div class="kicker">Certificados</div><h1>Un certificado con tu firma, en 3 pasos</h1>'
+     '<p>Sin imprimir ni sellar. Y el paciente lo tiene en su cuenta.</p>', True),
+    (paso(1, 3) + '<h2>Cargá tu firma, una sola vez</h2><p>Una imagen de tu firma o tu sello. Queda guardada para todos los certificados.</p>'
+     f'<div class="card"><div class="row"><b>Firma y sello</b><span class="pill turno">{icon("circle-check")} Cargada</span></div>'
+     f'{FIRMA}<div class="sig-l">Firma del profesional</div></div>', False),
+    (paso(2, 3) + '<h2>Buscá al paciente por DNI</h2><p>Aparece si es paciente de tu clínica.</p>'
+     f'<div class="card"><div class="search"><div class="inp">30.123.456</div><div class="btn">{icon("search")} Buscar</div></div>'
+     '<div class="row" style="margin-top:20px"><span>Paciente</span><b>Laura Méndez</b></div></div>', False),
+    (paso(3, 3) + '<h2>Completá y generá</h2><p>Motivo, días de reposo, diagnóstico e indicaciones. El PDF sale con tu firma.</p>'
+     '<div class="card"><div class="row"><span>Motivo</span><b>Reposo por cuadro gripal</b></div>'
+     '<div class="row"><span>Días de reposo</span><b>2</b></div>'
+     f'<div class="btn" style="margin-top:28px">{icon("file-text")} Generar certificado</div></div>', False),
+    ('<div class="kicker">Del lado del paciente</div><h2>Le queda en su cuenta</h2>'
+     '<p>Lo descarga en PDF desde <b>Mis certificados</b>, cuando lo necesite.</p>'
+     '<div class="card"><div class="row"><div><b>Certificado médico</b><div class="note" style="margin-top:6px">Dra. Paula Sosa · hoy</div></div><span class="pill">Digital</span></div>'
+     f'<div class="btn outline" style="margin-top:28px">{icon("file-down")} Descargar PDF</div></div>'
+     '<div class="note">¿Tenés uno en papel? Subís la foto y también le queda en la cuenta.</div>', False),
+    ('<h2>Certificados con firma, en todos los planes.</h2>'
+     f'<p>Desde $14.900 por mes, IVA incluido. Y lo probás {DIAS_PRUEBA} días gratis, sin tarjeta.</p>'
+     '<p class="big" style="margin-top:64px">Comentá <span class="kw">PRUEBA</span><br>y te escribo.</p>', True),
+]
+
+
+# Semana 3 · Post odontograma (cuadrantes 1 y 4; caras: arriba, derecha, abajo, izquierda, centro)
+def odo_fila(dientes):
+    return "".join(f'<div>{tooth(c, sim, est, pad=13)}<small>{n}</small></div>' for n, c, sim, est in dientes)
+
+
+_ = ["", "", "", "", ""]
+ODO_SUP = [("18", _, "ausente", "r"), ("17", ["", "", "", "", "r"], None, "r"), ("16", _, "corona", "r"),
+           ("15", _, None, "r"), ("14", ["", "", "", "a", ""], None, "r"), ("13", _, None, "r"),
+           ("12", _, "endo", "a"), ("11", ["", "r", "", "", ""], None, "r")]
+ODO_INF = [("48", _, "ausente", "a"), ("47", ["", "", "", "", "a"], None, "r"), ("46", ["", "", "", "", "r"], "endo", "r"),
+           ("45", _, None, "r"), ("44", _, None, "r"), ("43", ["", "", "a", "", ""], None, "r"),
+           ("42", _, None, "r"), ("41", _, None, "r")]
+
+post_odontograma = [
+    ('<div class="kicker">Odontología</div><h2>El odontograma, por caras y sin papel</h2>'
+     '<p style="margin-top:32px">Cada consulta arranca del último: marcás solo lo nuevo.</p>'
+     f'<div class="card odo-card"><div class="odo-grid">{odo_fila(ODO_SUP)}<hr>{odo_fila(ODO_INF)}</div>'
+     f'<div class="legend"><span><i style="background:{ODO_COLOR["r"]}"></i>Realizado</span>'
+     f'<span><i style="background:{ODO_COLOR["a"]}"></i>A tratar</span><span>○ Corona · | Endodoncia · ✕ Ausente o extracción</span></div></div>', False),
+]
+
+
 planes_st = [
     (f'<div class="kicker">Planes</div><h2>Un plan para cada consultorio</h2><p style="font-size:40px">Precio final por mes, IVA incluido.</p>'
      '<div class="mini">' + "".join(
@@ -350,19 +417,38 @@ def render(pages, folder, w, h):
         shot(p, ROOT / folder / f"{i:02d}.png", w, h)
 
 
-render(post_set(carrusel1), "carrusel-fijado-1", 1080, 1350)
-render(post_set(carrusel_planes), "carrusel-planes", 1080, 1350)
-render(post_set(carrusel_contratar), "carrusel-contratar", 1080, 1350)
-shot(post_set(post_paciente)[0], ROOT / "posts" / "paciente-turnos-sin-llamar.png", 1080, 1350)
-for nombre, slides in [("contratar", contratar), ("planes", planes_st), ("funciones", funciones),
-                       ("pacientes", pacientes), ("preguntas", preguntas)]:
-    render(story_set(slides), f"destacadas/{nombre}", 1080, 1920)
-for nombre, ic in portadas.items():
-    shot(portada(ic), ROOT / "destacadas" / "portadas" / f"{nombre}.png", 1080, 1920)
-
 # Foto de perfil: azul a sangre, isotipo centrado al ~46% (el círculo de IG recorta las esquinas)
 perfil = (f'<!doctype html><html><head><meta charset="utf-8"><style>*{{margin:0}}html,body{{width:1080px;height:1080px;overflow:hidden}}'
           f'body{{background:oklch(0.48 0.14 256);display:grid;place-items:center}}svg{{width:500px;height:500px}}</style></head><body>'
           f'{ISOTIPO.format(cls="", mod="oklch(0.985 0.005 240)", dot="oklch(0.781 0.121 190)")}</body></html>')
-shot(perfil, ROOT / "foto-perfil.png", 1080, 1080)
+
+
+def posts():
+    shot(post_set(post_paciente)[0], ROOT / "posts" / "paciente-turnos-sin-llamar.png", 1080, 1350)
+    shot(post_set(post_odontograma)[0], ROOT / "posts" / "odontograma.png", 1080, 1350)
+
+
+def destacadas():
+    for nombre, slides in [("contratar", contratar), ("planes", planes_st), ("funciones", funciones),
+                           ("pacientes", pacientes), ("preguntas", preguntas)]:
+        render(story_set(slides), f"destacadas/{nombre}", 1080, 1920)
+    for nombre, ic in portadas.items():
+        shot(portada(ic), ROOT / "destacadas" / "portadas" / f"{nombre}.png", 1080, 1920)
+
+
+GRUPOS = {
+    "carrusel-fijado-1": lambda: render(post_set(carrusel1), "carrusel-fijado-1", 1080, 1350),
+    "carrusel-planes": lambda: render(post_set(carrusel_planes), "carrusel-planes", 1080, 1350),
+    "carrusel-contratar": lambda: render(post_set(carrusel_contratar), "carrusel-contratar", 1080, 1350),
+    "carrusel-certificado": lambda: render(post_set(carrusel_certificado), "carrusel-certificado", 1080, 1350),
+    "posts": posts,
+    "destacadas": destacadas,
+    "foto-perfil": lambda: shot(perfil, ROOT / "foto-perfil.png", 1080, 1080),
+}
+
+pedidos = sys.argv[1:] or list(GRUPOS)
+for g in pedidos:
+    if g not in GRUPOS:
+        sys.exit(f"grupo desconocido: {g} (opciones: {', '.join(GRUPOS)})")
+    GRUPOS[g]()
 print("ok")

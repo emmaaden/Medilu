@@ -1,0 +1,7 @@
+[  0.0s] (es-AR-TomasNeural) Paciente refiere dolor al frío en la pieza 36. Caries oclusal profunda. Se indica obturación con resina compuesta.
+[ 11.2s] Así se escribe una historia clínica en Medilu: hablando. Vos atendés, y el texto queda en la ficha del paciente.
+[ 20.3s] Y viene preparado con el vocabulario de tu especialidad.
+[ 24.8s] El audio no se guarda ni se manda a terceros: se transcribe en un servidor propio.
+[ 31.0s] Probalo 14 días gratis. Comentá PRUEBA y te escribimos.
+
+Duración: 38.8 s · Voz: es-UY-ValentinaNeural

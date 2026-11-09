@@ -2,13 +2,14 @@
 
 La fuente Geist y los íconos de lucide salen de frontend/node_modules (hacer `npm install`
 en frontend/ antes de generar)."""
-import pathlib, re
+import os, pathlib, re
 
 ROOT = pathlib.Path(__file__).parent
 FRONT = ROOT.parent / "frontend"
 FONT = (FRONT / "node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2").as_uri()
 LUCIDE = FRONT / "node_modules/lucide-react/dist/esm/icons"
-CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+# Chrome: el de Windows por defecto; en otro sistema, exportar CHROME (p. ej. /usr/bin/google-chrome)
+CHROME = os.environ.get("CHROME", r"C:\Program Files\Google\Chrome\Application\chrome.exe")
 
 HANDLE = "@medilu.app"
 WHATSAPP = "261 772-5639"
@@ -56,3 +57,28 @@ ISOTIPO = """<svg viewBox="0 0 64 64" class="{cls}"><g fill="{mod}">
 def iso(cls="", dark=False):
     return ISOTIPO.format(cls=cls, mod="var(--on-primary)" if dark else "var(--primary)",
                           dot="var(--turno-on)" if dark else "var(--turno)")
+
+
+# Odontograma (convención de la app, frontend/src/lib/odontograma.ts): rojo realizado, azul a tratar.
+ODO_COLOR = {"r": "oklch(0.58 0.2 25)", "a": "var(--primary)", "": "#fff"}
+
+
+def tooth(caras, simbolo=None, estado="r", pad=3, cls="tooth"):
+    """Pieza del odontograma por caras.
+
+    caras: 5 estados (arriba, derecha, abajo, izquierda, centro), cada uno "r", "a" o "".
+    simbolo (diente completo, como en la app): "corona" (círculo), "endo" (línea vertical que
+    atraviesa el diente) o "ausente" (cruz), en el color de `estado`. `pad` agranda el lienzo
+    para que entren la corona y la línea de endodoncia."""
+    polys = ["0,0 100,0 70,30 30,30", "100,0 100,100 70,70 70,30", "0,100 100,100 70,70 30,70",
+             "0,0 0,100 30,70 30,30"]
+    s = "".join(f'<polygon points="{p}" fill="{ODO_COLOR[c]}"/>' for p, c in zip(polys, caras[:4]))
+    s += f'<rect x="30" y="30" width="40" height="40" fill="{ODO_COLOR[caras[4]]}"/>'
+    col = ODO_COLOR[estado]
+    sim = {"corona": f'<circle cx="50" cy="50" r="62" fill="none" stroke="{col}" stroke-width="5"/>',
+           "endo": f'<line x1="50" y1="-12" x2="50" y2="112" stroke="{col}" stroke-width="7" stroke-linecap="round"/>',
+           "ausente": (f'<g stroke="{col}" stroke-width="6" stroke-linecap="round"><line x1="8" y1="8" x2="92" y2="92"/>'
+                       f'<line x1="92" y1="8" x2="8" y2="92"/></g>')}.get(simbolo, "")
+    v = f"{-pad} {-pad} {100 + 2 * pad} {100 + 2 * pad}"
+    return (f'<svg viewBox="{v}" class="{cls}"><g stroke="var(--fg)" stroke-width="3" '
+            f'stroke-linejoin="round">{s}</g>{sim}</svg>')

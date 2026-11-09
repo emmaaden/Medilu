@@ -89,8 +89,8 @@ Portadas: `instagram/destacadas/portadas/` (subirlas como portada al editar cada
 |---|---|---|---|---|
 | 1 — Lanzamiento | Carrusel 1 (fijar) | Carrusel 2 Planes (fijar) | Video (Reel, fijar) | Subir las 5 destacadas |
 | 2 — Turnos ([detalle](SEMANA_2.md)) | Post «Turnos sin llamar» (paciente) | Reel «23:14»: una paciente saca turno de noche y a la mañana está en la agenda | Carrusel «Cómo contratar» (la destacada en 7 placas) | Encuesta: «¿Cómo das turnos hoy?» |
-| 3 — Consulta | Reel: dictado por voz en una consulta | Carrusel: certificado con firma en 3 pasos | Post: odontograma | Caja de preguntas para profesionales |
-| 4 — Precio y confianza | Post: «Qué pasa con tus datos si no contratás» | Carrusel 2 reposteado en historias | Video repost + CTA PRUEBA | Recordatorio: 14 días gratis |
+| 3 — Consulta ([detalle](SEMANA_3.md), 9 al 15 de nov.) | Reel «Sin tipear»: abre con un profesional dictando y el texto apareciendo | Carrusel: certificado con firma en 3 pasos | Post: odontograma | Caja de preguntas para profesionales |
+| 4 — Precio y confianza (16 al 22 de nov.) | Post: «Qué pasa con tus datos si no contratás» | Carrusel 2 reposteado en historias | Video repost + CTA PRUEBA | Recordatorio: 14 días gratis |
 
 Grabaciones de pantalla para los Reels: usar **DEV-Medilu** con el seed de datos de prueba
 (nunca datos reales de producción).
@@ -106,6 +106,12 @@ Grabaciones de pantalla para los Reels: usar **DEV-Medilu** con el seed de datos
 | Video ilustrativo con voz en off (+ portada, guion) | 1080×1920, MP4, 71 s, subtitulado | `video/medilu-video.mp4` | `python video/build_video.py` (ver requisitos en el script) |
 | Semana 2: carrusel «Cómo contratar» | 7 × 1080×1350 | `instagram/carrusel-contratar/` | `python instagram/build.py` |
 | Semana 2: reel «23:14» (+ portada, guion) | 1080×1920, MP4, 36 s, subtitulado | `video/reel-turno.mp4` | `python video/build_video.py reel-turno` |
+| Semana 3: reel «Sin tipear» (+ portada, guion) | 1080×1920, MP4, 39 s, dos voces | `video/reel-dictado.mp4` | `python video/build_video.py reel-dictado` |
+| Semana 3: carrusel «Certificado en 3 pasos» | 6 × 1080×1350 | `instagram/carrusel-certificado/` | `python instagram/build.py carrusel-certificado` |
+| Semana 3: post «Odontograma» | 1080×1350 | `instagram/posts/odontograma.png` | `python instagram/build.py posts` |
+
+`build.py` acepta grupos (`python build.py carrusel-certificado posts`) para no regenerar piezas
+ya publicadas. Fuera de Windows, exportar `CHROME` con la ruta de Chrome.
 
 Los precios están como constantes al principio de `instagram/build.py`: si cambia la tabla
 `plan`, actualizarlos ahí y regenerar.
