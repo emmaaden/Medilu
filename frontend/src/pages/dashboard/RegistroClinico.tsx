@@ -26,6 +26,7 @@ import {
   Copy,
   Check,
   RefreshCw,
+  Link2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -49,6 +50,7 @@ import {
 } from "@/components/ui/dialog"
 import { Odontogram, type Diente } from "@/components/dashboard/Odontogram"
 import { FichaObraSocialDialog } from "@/components/dashboard/FichaObraSocialDialog"
+import { LinkDatosDialog } from "@/components/dashboard/LinkDatosDialog"
 import { api, ApiError } from "@/lib/api"
 import { downloadPatientHistoryPdf, type Paciente } from "@/lib/patientPdf"
 import { useAuth } from "@/contexts/AuthContext"
@@ -94,6 +96,8 @@ export default function RegistroClinico() {
   const { user } = useAuth()
   const [area, setArea] = useState("")
   const [view, setView] = useState<View>("menu")
+  // Fase AA: link para que un paciente nuevo cargue sus datos.
+  const [linkNuevo, setLinkNuevo] = useState(false)
 
   useEffect(() => {
     if (!user?.email) return
@@ -119,7 +123,7 @@ export default function RegistroClinico() {
       </p>
 
       {view === "menu" && (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <MenuCard
             icon={Search}
             title="Buscar paciente"
@@ -132,8 +136,15 @@ export default function RegistroClinico() {
             description="Dá de alta un paciente nuevo con su primera consulta."
             onClick={() => setView("registrar")}
           />
+          <MenuCard
+            icon={Link2}
+            title="Pedir datos por link"
+            description="Mandale un link al paciente para que cargue sus datos personales antes de la consulta."
+            onClick={() => setLinkNuevo(true)}
+          />
         </div>
       )}
+      <LinkDatosDialog open={linkNuevo} onOpenChange={setLinkNuevo} />
 
       {view === "registrar" && (
         <RegistrarPaciente
@@ -1268,6 +1279,7 @@ function BuscarPaciente({
   const [savingCob, setSavingCob] = useState(false)
   const [fichaOs, setFichaOs] = useState(false)
   const [enviarAcceso, setEnviarAcceso] = useState(false)
+  const [linkDatos, setLinkDatos] = useState(false)
 
   async function guardarCobertura() {
     if (!paciente || !editCob) return
@@ -1425,6 +1437,9 @@ function BuscarPaciente({
               <Mail /> Enviar acceso
             </Button>
           )}
+          <Button variant="outline" onClick={() => setLinkDatos(true)}>
+            <Link2 /> Pedir datos
+          </Button>
           <Button variant="outline" onClick={() => setFichaOs(true)}>
             <ClipboardList /> Ficha obra social
           </Button>
@@ -1611,6 +1626,8 @@ ${t}` : t))
         onOpenChange={setEnviarAcceso}
         onEnviado={() => setPaciente({ ...paciente, tieneCuenta: true })}
       />
+
+      <LinkDatosDialog paciente={paciente} open={linkDatos} onOpenChange={setLinkDatos} />
 
       <FichaObraSocialDialog
         open={fichaOs}

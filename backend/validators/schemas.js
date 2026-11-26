@@ -234,6 +234,33 @@ module.exports = {
         }),
     },
 
+    // Fase AA: link para que el paciente cargue sus datos personales.
+    linkDatos: {
+        // El profesional genera el link: sin `dni` es para un paciente nuevo; con `dni`,
+        // para completar la ficha de ese paciente. Con `email`, además se lo manda.
+        crear: z.object({
+            dni: dni.optional(),
+            email: emailOpcional,
+        }),
+        ver: z.object({
+            token: z.string().trim().min(20, 'Link inválido').max(100, 'Link inválido'),
+        }),
+        enviar: z.object({
+            token: z.string().trim().min(20, 'Link inválido').max(100, 'Link inválido'),
+            dni: z.string().trim().regex(/^\d{6,9}$/, 'Escribí tu DNI sin puntos (solo números).'),
+            nombre,
+            apellido: z.string().trim().min(1, 'Apellido requerido').max(120, 'Apellido demasiado largo'),
+            fechaNacimiento: z.string().trim().min(1, 'Fecha de nacimiento requerida').max(40),
+            sexo: z.string().max(20).optional(),
+            telefono: z.string().trim().max(30).optional(),
+            email: emailOpcional,
+            direccion: z.string().trim().max(200).optional(),
+            ...cobertura,
+            aceptaTerminos: z.literal(true, 'Tenés que aceptar los Términos y la Política de privacidad'),
+            versionLegal: z.string().trim().max(20).optional(),
+        }),
+    },
+
     miCuenta: {
         updatePerfil: z.object({
             nombre: z.string().trim().max(120).optional(),
