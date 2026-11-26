@@ -69,4 +69,29 @@ async function registrarAcceso(req, { accion, idPaciente = null, idRegistro = nu
     }
 }
 
-module.exports = { registrarAcceso, nombreActor };
+// Acción hecha SIN sesión por el propio paciente (Fase AA: carga sus datos desde el
+// link que le mandó el profesional). La clínica la pone el backend (la del link); el
+// nombre del actor es el que cargó el paciente.
+async function registrarAccesoPaciente(req, { accion, clinicaId, idPaciente = null, paciente = null, detalle = null }) {
+    try {
+        const { error } = await supabase.from('hc_acceso').insert({
+            clinica_id: clinicaId || null,
+            id_persona_actor: null,
+            actor_nombre: paciente ? paciente.nombre : null,
+            actor_rol: 'paciente',
+            accion,
+            id_paciente: idPaciente,
+            paciente_nombre: paciente ? paciente.nombre : null,
+            paciente_dni: paciente ? paciente.dni : null,
+            id_registro: null,
+            detalle,
+            ip: req.ip || null,
+            user_agent: (req.get('user-agent') || '').slice(0, 300) || null,
+        });
+        if (error) throw error;
+    } catch (err) {
+        console.error(`[bitácora] no se pudo registrar "${accion}":`, err.message || err);
+    }
+}
+
+module.exports = { registrarAcceso, registrarAccesoPaciente, nombreActor };

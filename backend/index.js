@@ -31,6 +31,9 @@ const legalRoutes = require('./routes/legalRoutes'); // robots/sitemap + botón 
 const planRoutes = require('./routes/planRoutes'); // Fase L: catálogo de planes y plan de la clínica
 const plataformaRoutes = require('./routes/plataformaRoutes'); // Fase L: activación de planes (equipo de la plataforma)
 const pagoRoutes = require('./routes/pagoRoutes'); // Fase M: suscripción de la clínica con Mercado Pago
+const linkDatosRoutes = require('./routes/linkDatosRoutes'); // Fase AA: el paciente carga sus datos desde un link
+const notificacionRoutes = require('./routes/notificacionRoutes'); // Fase AB: centro de notificaciones del panel
+const { notificarTurno } = require('./utils/notificaciones');
 // (los guards de auth se aplican en cada router; el dashboard pasó al SPA)
 const { supabase } = require('./config/supabaseClient');
 const { getMembresiasActivas, clinicasDeProfesional } = require('./utils/membresias');
@@ -262,6 +265,8 @@ app.use('/auditoria', auditoriaRoutes); // Fase J: auditoría médica (auditor/a
 app.use('/catalogos', catalogoRoutes); // Fase K: catálogos (obras sociales, CIE-10, prácticas)
 app.use('/autorizaciones', autorizacionRoutes); // Fase K: autorizaciones previas de prácticas
 app.use('/api/turnos', turnosRoutes); // Fase 3: turnos del paciente (mis turnos / gestión por token)
+app.use('/notificaciones', notificacionRoutes); // Fase AB: campana del panel
+app.use('/api/datos-paciente', linkDatosRoutes); // Fase AA: link de datos del paciente (público, por token)
 app.use('/api/mi-cuenta', miCuentaRoutes); // Fase 3: autogestión del paciente (perfil / historia)
 app.use('/api/planes', planRoutes); // Fase L: catálogo público + plan y uso de la clínica activa
 app.use('/api/pagos', pagoRoutes); // Fase M: contratar/cancelar con Mercado Pago + webhook (fuera del guard de solo lectura)
@@ -513,12 +518,15 @@ app.post('/create-event', createEventLimiter, validate(schemas.calendar.createEv
             turnoRow.manage_token_hash = hash;
         }
 
-        const { error: insError } = await supabase.from('turno').insert(turnoRow);
+        const { data: insertado, error: insError } = await supabase.from('turno').insert(turnoRow).select('id').maybeSingle();
         // Otra reserva ganó el mismo horario entre el chequeo y el insert (Fase Q).
         if (esSolapeTurno(insError)) {
             return res.status(409).json({ error: 'Ese horario ya no está disponible. Elegí otro.' });
         }
         if (insError) throw insError;
+
+        // Fase AB: aviso al profesional en la campana del panel (no espera).
+        if (insertado) notificarTurno(insertado.id, 'turno_nuevo');
 
         // 5. Email de confirmación (best-effort: no bloquea la reserva).
         // Enlace de gestión: los invitados reciben su token; los logueados van a "Mis turnos".

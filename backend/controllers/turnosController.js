@@ -15,6 +15,7 @@ const { supabase } = require('../config/supabaseClient');
 const { getUserSupabase } = require('../middleware/userSupabase');
 const { hashToken } = require('../utils/turnoToken');
 const { misPacienteIds } = require('../utils/fichasPaciente');
+const { notificarTurno } = require('../utils/notificaciones');
 
 const ERR_SESION = { status: 401, body: { error: 'Tu sesión expiró. Iniciá sesión de nuevo.' } };
 
@@ -108,6 +109,8 @@ exports.cancelarPropio = async (req, res) => {
             .eq('id', id);
         if (updError) throw updError;
 
+        // Fase AB: aviso al profesional en la campana del panel (no espera).
+        notificarTurno(turno.id, 'turno_cancelado');
         return res.json({ message: 'Turno cancelado.' });
     } catch (err) {
         console.error('Error cancelando turno propio:', err);
@@ -169,6 +172,8 @@ exports.cancelarPorToken = async (req, res) => {
             .eq('id', turno.id);
         if (updError) throw updError;
 
+        // Fase AB: aviso al profesional en la campana del panel (no espera).
+        notificarTurno(turno.id, 'turno_cancelado');
         return res.json({ message: 'Turno cancelado.' });
     } catch (err) {
         console.error('Error cancelando turno por token:', err);

@@ -395,6 +395,7 @@ async function canjearCodigoVinculacion({ authId, codigo }) {
 
 module.exports = {
     enSegundoPlano,
+    enviarAlPaciente,
     crearCuentaPaciente,
     buscarAutoregistrado,
     avisarVinculacion,

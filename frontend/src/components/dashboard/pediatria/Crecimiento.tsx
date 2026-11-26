@@ -67,6 +67,11 @@ export function CurvaCrecimiento({
   const r = RANGOS[rango]
   const datos = useMemo(() => curvas(indicador, sexo, r.desde, r.hasta), [indicador, sexo, r.desde, r.hasta])
   const visibles = puntos.filter((p) => p.meses >= r.desde && p.meses <= r.hasta)
+  // Rango del eje Y explícito (P3 a P97 más los puntos del paciente): con "auto",
+  // Recharts lo calcula solo con la serie del paciente (que trae su propio `data`)
+  // y las curvas quedan fuera del gráfico en cuanto hay una medición.
+  const valoresY = [...datos.flatMap((d) => [d.p3, d.p97]), ...visibles.map((p) => p.valor)]
+  const dominioY: [number, number] = [Math.floor(Math.min(...valoresY)), Math.ceil(Math.max(...valoresY))]
   const hasta = Math.min(r.hasta, edadMaxima(indicador))
   const ticks = []
   const paso = hasta - r.desde <= 24 ? 3 : 12
@@ -86,7 +91,7 @@ export function CurvaCrecimiento({
           axisLine={false}
         />
         <YAxis
-          domain={["auto", "auto"]}
+          domain={dominioY}
           width={40}
           tickLine={false}
           axisLine={false}

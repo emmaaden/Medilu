@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pacienteController = require('../controllers/pacienteController');
+const linkDatosController = require('../controllers/linkDatosController');
 const { requireRole } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const schemas = require('../validators/schemas');
@@ -23,6 +24,8 @@ router.get('/emisor', pacienteController.getEmisor);
 router.put('/cobertura', validate(schemas.pacient.cobertura), pacienteController.actualizarCobertura);
 // Fase Y: corregir datos personales y listar los pacientes de la clínica (paginado).
 router.put('/datos', validate(schemas.pacient.editarDatos), pacienteController.editarDatos);
+// Fase AA: link para que el paciente cargue sus datos (nuevo o de una ficha existente).
+router.post('/link-datos', validate(schemas.linkDatos.crear), linkDatosController.crearLink);
 router.get('/lista', validate(schemas.pacient.lista, 'query'), pacienteController.listaPacientes);
 
 module.exports = router;

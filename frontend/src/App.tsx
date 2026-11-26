@@ -32,6 +32,7 @@ const ReporteSuplantacion = lazy(() => import("@/pages/ReporteSuplantacion"))
 const Turnos = lazy(() => import("@/pages/Turnos"))
 const MisTurnos = lazy(() => import("@/pages/MisTurnos"))
 const GestionarTurno = lazy(() => import("@/pages/GestionarTurno"))
+const CompletarDatos = lazy(() => import("@/pages/CompletarDatos"))
 const MiHistoria = lazy(() => import("@/pages/MiHistoria"))
 const MisCertificados = lazy(() => import("@/pages/MisCertificados"))
 const MisEstudios = lazy(() => import("@/pages/MisEstudios"))
@@ -129,6 +130,8 @@ function App() {
           <Route path="/mis-certificados" element={<MisCertificados />} />
           <Route path="/mis-estudios" element={<MisEstudios />} />
           <Route path="/gestionar-turno" element={<GestionarTurno />} />
+          {/* Fase AA: el paciente carga sus datos desde el link del profesional. */}
+          <Route path="/completar-datos" element={<CompletarDatos />} />
           <Route path="/planes" element={<Planes />} />
           {/* Compatibilidad: la vieja historia clínica pública por DNI se retiró. */}
           <Route

@@ -58,6 +58,7 @@ import { Logo } from "@/components/site/Logo"
 import { HELP_URL } from "@/lib/site"
 import { useAuth } from "@/contexts/AuthContext"
 import { ThemeToggle } from "@/components/site/ThemeToggle"
+import { NotificacionesMenu } from "@/components/dashboard/NotificacionesMenu"
 import { VistaBanner } from "@/components/VistaBanner"
 import { VerComoDialog } from "@/components/VerComoDialog"
 import { ESTADO_LABEL, tieneFeature, type Feature } from "@/lib/planes"
@@ -273,6 +274,8 @@ export function DashboardNavbar() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Fase AB: centro de notificaciones (turnos online, datos por link…). */}
+          <NotificacionesMenu />
           <ThemeToggle />
           <div className="hidden items-center gap-2 lg:flex">
             <Button asChild variant="ghost" size="sm">

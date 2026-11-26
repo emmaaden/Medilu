@@ -41,6 +41,7 @@ const TITULOS: Record<string, string> = {
   "/mis-certificados": "Mis certificados",
   "/mis-estudios": "Mis estudios",
   "/gestionar-turno": "Gestionar turno",
+  "/completar-datos": "Completar mis datos",
   "/seleccionar-clinica": "Seleccionar clínica",
   "/terminos": "Términos y condiciones",
   "/privacidad": "Política de privacidad",
