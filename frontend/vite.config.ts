@@ -25,6 +25,7 @@ const API_PREFIXES = [
   '/auditoria',
   '/catalogos',
   '/autorizaciones',
+  '/pediatria',
   '/plataforma',
   '/professionals',
   '/available-slots',
