@@ -33,6 +33,7 @@ const { parseFechaNacimiento } = require('../utils/fechaNacimiento');
 const { crearCuentaPaciente, enviarAlPaciente, nombreClinica } = require('../utils/cuentaPaciente');
 const { isMailerConfigured } = require('../utils/mailer');
 const { layoutMail, parrafo, boton, nota, esc } = require('../utils/emailLayout');
+const { notificar } = require('../utils/notificaciones');
 
 const DIAS_VIGENCIA = 7;
 const MAX_INTENTOS_DNI = 5;
@@ -52,7 +53,7 @@ const limpio = (v) => (v === undefined || v === null ? '' : String(v).trim());
 async function buscarLink(token) {
     const { data: link, error } = await supabase
         .from('link_datos_paciente')
-        .select('id, clinica_id, id_paciente, creado_por_nombre, vence_en, usado_en, intentos')
+        .select('id, clinica_id, id_paciente, creado_por, creado_por_nombre, vence_en, usado_en, intentos')
         .eq('token_hash', hashToken(String(token).trim()))
         .maybeSingle();
     if (error) throw error;
@@ -271,6 +272,18 @@ exports.enviarDatos = async (req, res) => {
                 idPaciente: resultado.idPaciente,
                 paciente: { nombre: nombreCompleto(datos), dni },
                 detalle: { nuevo: resultado.nuevo, campos: resultado.campos },
+            }),
+            // Fase AB: aviso en la campana de quien mandó el link.
+            notificar({
+                clinicaId: link.clinica_id,
+                idPersona: link.creado_por,
+                tipo: 'datos_paciente',
+                titulo: 'Un paciente cargó sus datos',
+                cuerpo: resultado.nuevo
+                    ? `${nombreCompleto(datos)} completó sus datos desde el link y ya está en tu lista de pacientes.`
+                    : `${nombreCompleto(datos)} actualizó sus datos desde el link.`,
+                url: '/dashboard/registro-clinico',
+                datos: { dni },
             }),
         ]);
 

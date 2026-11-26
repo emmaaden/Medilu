@@ -234,6 +234,12 @@ module.exports = {
         }),
     },
 
+    // Fase AB: centro de notificaciones del panel.
+    notificaciones: {
+        listar: z.object({ conteo: z.string().max(5).optional() }),
+        leer: z.object({ ids: z.array(z.number().int().positive()).max(100).optional() }),
+    },
+
     // Fase AA: link para que el paciente cargue sus datos personales.
     linkDatos: {
         // El profesional genera el link: sin `dni` es para un paciente nuevo; con `dni`,

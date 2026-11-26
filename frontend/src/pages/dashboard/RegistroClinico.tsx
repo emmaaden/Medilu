@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import {
   Search,
@@ -98,6 +98,18 @@ export default function RegistroClinico() {
   const [view, setView] = useState<View>("menu")
   // Fase AA: link para que un paciente nuevo cargue sus datos.
   const [linkNuevo, setLinkNuevo] = useState(false)
+  // Fase AB: desde una notificación se llega con el DNI de la ficha en el state (no en
+  // la URL). Se abre esa ficha y se limpia el state para que no se reabra al recargar.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [abrirDni, setAbrirDni] = useState<string | null>(null)
+  useEffect(() => {
+    const dni = (location.state as { dni?: string } | null)?.dni
+    if (!dni) return
+    setAbrirDni(dni)
+    setView("buscar")
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.state, location.pathname, navigate])
 
   useEffect(() => {
     if (!user?.email) return
@@ -157,6 +169,8 @@ export default function RegistroClinico() {
 
       {view === "buscar" && (
         <BuscarPaciente
+          key={abrirDni ?? "lista"}
+          abrirDni={abrirDni}
           isOdonto={isOdonto}
           isPediatria={isPediatria}
           isGeneral={isGeneral}
@@ -1248,6 +1262,7 @@ function BuscarPaciente({
   profesional,
   area,
   onBack,
+  abrirDni,
 }: {
   isOdonto: boolean
   isPediatria: boolean
@@ -1255,6 +1270,8 @@ function BuscarPaciente({
   profesional: string
   area: string
   onBack: () => void
+  /** Fase AB: ficha a abrir al montar (se llega desde una notificación). */
+  abrirDni?: string | null
 }) {
   const { user } = useAuth()
   // DNI de la ficha que se está abriendo desde la lista.
@@ -1314,6 +1331,12 @@ function BuscarPaciente({
       setAbriendo(null)
     }
   }
+
+  // Fase AB: se llegó desde una notificación (el componente se monta con ese DNI).
+  useEffect(() => {
+    if (abrirDni) void abrir(abrirDni)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abrirDni])
 
   async function datosGuardados(dni: string) {
     setVersionLista((v) => v + 1)

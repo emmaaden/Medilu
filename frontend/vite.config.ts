@@ -27,6 +27,7 @@ const API_PREFIXES = [
   '/autorizaciones',
   '/pediatria',
   '/plataforma',
+  '/notificaciones',
   '/professionals',
   '/available-slots',
   '/create-event',
